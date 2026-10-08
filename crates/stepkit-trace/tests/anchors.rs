@@ -763,7 +763,8 @@ fn anchor_steep_jump_entry() {
     );
 }
 
-/// Fake world reporting a very steep floor (normal.y = 0.25 < 0.2924).
+/// Fake world reporting a steep floor (normal.y = 0.25, steeper than the
+/// 0.866 steep-jump threshold for default floors; downhill yaw is +z).
 struct SteepFloorWorld;
 impl stepkit_core::world::CollisionWorld for SteepFloorWorld {
     fn find_floor(&self, _pos: Vec3, _max_above: f32) -> Option<stepkit_core::world::FloorHit> {
@@ -814,6 +815,9 @@ fn anchor_steep_jump_routing() {
         action: ActionId::WALKING,
         pos: Vec3::new(0.0, 0.0, 0.0),
         forward_speed: 10.0,
+        // Face uphill (downhill yaw is +z for this floor normal); the
+        // decomp steep-jump check requires NOT facing downhill.
+        face_yaw: Angle::from_degrees(180.0),
         ..CharacterState::default()
     };
     let (ns, _, _) = tick(
