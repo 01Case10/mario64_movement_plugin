@@ -1,12 +1,15 @@
 //! Air actions: SingleJump, DoubleJump, TripleJump, Backflip, SideFlip,
-//! LongJump, Dive, GroundPound, Freefall.
+//! LongJump, SteepJump, Dive, SlideKick, GroundPound, WallKickAir,
+//! AirHitWall, SoftBonk, BackwardAirKb/ForwardAirKb (+hard variants),
+//! Freefall, LedgeGrab.
 //!
 //! Entry numbers from the community wiki (see spec/actions/*.md):
 //! Double Jump vy=52+hspeed/4 (wiki:Double Jump@18964), Triple vy=69
 //! (wiki:Triple Jump@19300), Backflip fwd=-16/vy=62 (wiki:Backflip@19307),
 //! SideFlip vy=62/fwd=8/facing=intended (wiki:Side Flip@20374),
 //! Dive +15 horizontal clamped to 48 and +20 vy from ground
-//! (wiki:Dive@19303). Long jump and ground pound numbers are (verify).
+//! (wiki:Dive@19303). Long jump, wall-kick flight, steep jump, and
+//! knockback numbers are decomp-derived (behavioral reference).
 
 use super::{ActionCx, ActionHandler, ActionResult};
 use crate::angles::Angle;
@@ -32,6 +35,9 @@ pub mod slot {
     pub const AIR_KNOCKBACK: u32 = 20;
     pub const SLIDE_KICK: u32 = 28;
     pub const ROLLOUT: u32 = 29;
+    pub const STEEP_JUMP: u32 = 30;
+    pub const AIR_HIT_WALL: u32 = 31;
+    pub const SOFT_BONK: u32 = 32;
 }
 
 /// Per-action air behavior switches.
@@ -133,53 +139,47 @@ fn air_common(cx: &mut ActionCx, prev_buttons: u16, cfg: &AirConfig) -> Option<A
         });
         cx.state.wall_kick_timer = 10; // spec: wall.kick_window (verify)
                                        // Speed-dependent wall response.
-                                       // (Behavioral: soft stop, normal bonk, high-speed knockback.)
         let speed = (cx.state.vel.x * cx.state.vel.x + cx.state.vel.z * cx.state.vel.z).sqrt();
         let n = out.wall_normal;
-        // Remove into-wall velocity component (reflect).
-        let dot = cx.state.vel.x * n.x + cx.state.vel.z * n.z;
-        if dot < 0.0 {
-            // Reflect the into-wall component.
-            cx.state.vel.x -= 2.0 * dot * n.x;
-            cx.state.vel.z -= 2.0 * dot * n.z;
+        // Dive into a wall -> bonk -> backwards air knockback at any speed.
+        // (wiki:Dive@19303; numbers (verify))
+        if cx.state.action == ActionId::DIVE {
+            return Some(enter_backward_air_kb(cx, n, false));
         }
-        // Slide kick and rollouts stop dead on walls (full bonk routing
-        // for these is Phase C).
-        if cx.state.action == ActionId::SLIDE_KICK
-            || cx.state.action == ActionId::FORWARD_ROLLOUT
-            || cx.state.action == ActionId::BACKWARD_ROLLOUT
-        {
+        // Slide kick and rollouts stop dead on walls.
+        let stopped_dead = matches!(
+            cx.state.action,
+            ActionId::SLIDE_KICK | ActionId::FORWARD_ROLLOUT | ActionId::BACKWARD_ROLLOUT
+        );
+        if stopped_dead {
             cx.state.vel.x = 0.0;
             cx.state.vel.z = 0.0;
             cx.state.forward_speed = 0.0;
-        } else if speed >= 38.0 {
-            // High-speed impact -> backwards air knockback.
-            return Some(enter_air_knockback(cx, out.wall_normal));
-        } else if speed > 16.0 {
-            // Normal bonk: reduce speed, stay in air.
-            let scale = 0.5; // (verify)
-            cx.state.vel.x *= scale;
-            cx.state.vel.z *= scale;
-            // Update forward_speed to match.
-            let (fx, fz) = cx.forward_xz();
-            cx.state.forward_speed = cx.state.vel.x * fx + cx.state.vel.z * fz;
-        } else {
-            // Soft stop: kill into-wall motion, keep tangential.
-            // (Velocity already reflected above; just damp.)
-            cx.state.vel.x *= 0.8;
-            cx.state.vel.z *= 0.8;
         }
-        // Dive into a wall -> bonk -> backwards air knockback.
-        // (wiki:Dive@19303; numbers (verify))
-        if cx.state.action == ActionId::DIVE {
-            return Some(enter_air_knockback(cx, out.wall_normal));
-        }
-        // Ledge grab: wall hit, falling, no landing, action allows it.
-        // Conditions: wiki:Ledge Grab@19518.
+        // Ledge grab takes priority over the bonk (the reference checks it
+        // during the step, before wall resolution): falling, no landing,
+        // and the action allows it. Conditions: wiki:Ledge Grab@19518.
         if out.floor.is_none() && vy_before_landing <= 0.0 && cfg.can_ledge_grab {
             if let Some(r) = try_ledge_grab(cx, out.wall_normal) {
                 return Some(r);
             }
+        }
+        if !stopped_dead {
+            if speed > 16.0 {
+                // Solid hit -> the transient air-hit-wall state: a 2-frame
+                // wall-kick window, then knockback or soft bonk by speed.
+                return Some(enter_air_hit_wall(cx, n));
+            }
+            // Graze (speed <= 16): no bonk, no action change, no dampening.
+            // Remove just the into-wall component so the character slides
+            // along the wall instead of penetrating it.
+            let dot = cx.state.vel.x * n.x + cx.state.vel.z * n.z;
+            if dot < 0.0 {
+                cx.state.vel.x -= dot * n.x;
+                cx.state.vel.z -= dot * n.z;
+            }
+            let (fx, fz) = cx.forward_xz();
+            cx.state.forward_speed = cx.state.vel.x * fx + cx.state.vel.z * fz;
         }
     } else {
         cx.state.wall_hit = false;
@@ -234,6 +234,15 @@ fn enter_landing_for(cx: &mut ActionCx, fall_speed: f32) -> ActionResult {
         ActionId::LONG_JUMP => cx.goto(ActionId::LONG_JUMP_LAND, arg),
         ActionId::DIVE => super::ground::enter_dive_slide(cx),
         ActionId::SLIDE_KICK => super::ground::enter_slide_kick_slide(cx),
+        ActionId::WALL_KICK_AIR => cx.goto(ActionId::JUMP_LAND, arg),
+        ActionId::STEEP_JUMP => {
+            // Still moving backward along facing -> slide; else jump-land.
+            if cx.state.forward_speed < 0.0 {
+                super::ground::begin_sliding(cx)
+            } else {
+                cx.goto(ActionId::JUMP_LAND, arg)
+            }
+        }
         _ => cx.goto(ActionId::FREEFALL_LAND, arg),
     }
 }
@@ -311,12 +320,12 @@ pub fn enter_side_flip(cx: &mut ActionCx) -> ActionResult {
     cx.goto(ActionId::SIDE_FLIP, 0)
 }
 
-/// Long jump entry. Numbers are (verify); gravity -2 is documented
-/// (wiki:Gravity@20294).
+/// Long jump entry: vy = 30, forward speed x1.5 capped at 48.
+/// (decomp-derived; gravity -2 documented: wiki:Gravity@20294)
 pub fn enter_long_jump(cx: &mut ActionCx) -> ActionResult {
-    // spec: jump.longjump_vertical / jump.longjump_forward_gain (verify)
-    let vy = 28.0;
-    cx.state.forward_speed += 18.0; // unbounded by design (verify)
+    // spec: jump.longjump_vertical / jump.longjump_forward_scale
+    let vy = 30.0;
+    cx.state.forward_speed = (cx.state.forward_speed * 1.5).min(48.0);
     set_air_velocity(cx, vy);
     cx.timeline.slot = slot::LONG_JUMP;
     cx.events.push(Event::Jumped { velocity_y: vy });
@@ -335,12 +344,18 @@ pub fn enter_dive(cx: &mut ActionCx, from_ground: bool) -> ActionResult {
     cx.goto(ActionId::DIVE, 0)
 }
 
-/// Ground pound entry: kill momentum, hover, then slam. All numbers (verify).
+/// Ground pound entry: kill momentum. The rise phase needs 320 units of
+/// headroom; without it the pound skips straight to the slam phase.
 pub fn enter_ground_pound(cx: &mut ActionCx) -> ActionResult {
     cx.state.forward_speed = 0.0;
     cx.state.vel = Vec3::ZERO;
     cx.timeline.slot = slot::GROUND_POUND;
-    cx.goto(ActionId::GROUND_POUND, 0)
+    let r = cx.goto(ActionId::GROUND_POUND, 0);
+    // spec: ground_pound.rise_headroom (decomp-derived)
+    if cx.world.find_ceiling(cx.state.pos, 320.0).is_some() {
+        cx.state.action_state = 1; // no room to rise: straight to the slam
+    }
+    r
 }
 
 fn set_air_velocity(cx: &mut ActionCx, vy: f32) {
@@ -521,30 +536,60 @@ impl ActionHandler for Freefall {
     }
 }
 
-/// GroundPound: hover, then slam straight down. Numbers (verify).
+/// GroundPound: a rising phase, then the slam straight down.
+/// action_state 0 = rise, 1 = slam.
+///
+/// Rise: the first 10 frames climb at (22 - 2*timer) units/frame (20 on the
+/// first tick down to 2 on the tenth; the 1-based timer is shifted to match
+/// the 0-based reference formula 20 - 2*t), vy pinned at -50, forward
+/// zeroed. Timer > 14 moves to the slam (simplification: the reference keys
+/// this off the start animation's end). Needs 320 headroom (checked at
+/// entry); without it the pound starts in the slam phase.
+/// Slam: gravity -4 from -50, terminal -75, no steering.
 pub struct GroundPound;
 impl ActionHandler for GroundPound {
     fn name(&self) -> &'static str {
         "GroundPound"
     }
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
-        // spec: ground_pound.hover_frames / ground_pound.slam_speed (verify)
-        const HOVER_FRAMES: u32 = 8;
-        if cx.state.action_timer < HOVER_FRAMES {
-            cx.state.vel = Vec3::ZERO;
+        // spec: ground_pound.rise_frames / ground_pound.slam_transition
+        if cx.state.action_state == 0 {
+            let t = cx.state.action_timer;
+            if t <= 10 {
+                cx.state.pos.y += 22.0 - 2.0 * t as f32;
+            }
+            cx.state.forward_speed = 0.0;
+            cx.state.vel = Vec3::new(0.0, -50.0, 0.0);
+            if t > 14 {
+                cx.state.action_state = 1;
+            }
             cx.timeline.slot = slot::GROUND_POUND;
             return ActionResult::Stay;
         }
+        // Slam phase.
         if let Some(r) = air_cancels(cx, prev_buttons, &base_air_config()) {
             return r;
         }
-        // Slam: fall fast with no steering.
         cx.state.vel.x = 0.0;
         cx.state.vel.z = 0.0;
         cx.state.vel.y = (cx.state.vel.y - 4.0).max(-75.0);
         let out = step_air(&cx.state, cx.world, cx.params);
         cx.state.pos = out.pos;
         cx.state.vel.y = out.vel_y;
+        cx.state.floor_y = out.floor.map(|f| f.y);
+        if out.wall_hit {
+            // Bonk off the wall into a backwards air knockback.
+            let n = out.wall_normal;
+            let away = crate::trig::atan2(n.x, n.z);
+            cx.state.face_yaw = away;
+            cx.state.forward_speed = -16.0;
+            let (fx, fz) = cx.forward_xz();
+            cx.state.vel.x = fx * -16.0;
+            cx.state.vel.z = fz * -16.0;
+            cx.state.vel.y = 40.0;
+            cx.timeline.slot = slot::AIR_KNOCKBACK;
+            return cx.goto(ActionId::BACKWARD_AIR_KB, 0);
+        }
         if out.floor.is_some() {
             let fall_speed = out.fall_speed;
             cx.events.push(Event::Landed { fall_speed });
@@ -557,28 +602,101 @@ impl ActionHandler for GroundPound {
     }
 }
 
-/// Wall kick entry: kick away from the wall. Numbers are (verify);
-/// the ID is verified (wiki:Wall Kick rev 19311).
-pub fn enter_wall_kick(cx: &mut ActionCx, wall_normal: glam::Vec3) -> ActionResult {
-    // spec: wall_kick.vertical / wall_kick.forward (verify)
+/// Wall-kick flight entry: face away from the wall, forward speed raised
+/// to at least 24, vertical speed `vy`. Routes to WALL_KICK_AIR.
+fn enter_wall_kick_flight(cx: &mut ActionCx, wall_normal: glam::Vec3, vy: f32) -> ActionResult {
+    // spec: wall_kick.forward_min / wall_kick.vertical (decomp-derived)
     let away = crate::trig::atan2(wall_normal.x, wall_normal.z);
     cx.state.face_yaw = away;
-    cx.state.forward_speed = 20.0;
-    set_air_velocity(cx, 52.0);
+    cx.state.forward_speed = cx.state.forward_speed.max(24.0);
+    set_air_velocity(cx, vy);
     cx.timeline.slot = slot::WALL_KICK;
-    cx.events.push(Event::Jumped { velocity_y: 52.0 });
-    cx.goto(ActionId::WALL_KICK, 0)
+    cx.events.push(Event::Jumped { velocity_y: vy });
+    cx.goto(ActionId::WALL_KICK_AIR, 0)
 }
 
-/// Backwards air knockback (dive bonk). Numbers are (verify).
-pub fn enter_air_knockback(cx: &mut ActionCx, wall_normal: glam::Vec3) -> ActionResult {
+/// Wall kick entry from the kick window: vy = 62.
+/// (ID verified: wiki:Wall Kick rev 19311)
+pub fn enter_wall_kick(cx: &mut ActionCx, wall_normal: glam::Vec3) -> ActionResult {
+    enter_wall_kick_flight(cx, wall_normal, 62.0)
+}
+
+/// Air-hit-wall entry: remove the into-wall velocity component so the
+/// character stays against the wall (no bounce-away; the knockback path
+/// rebuilds velocity explicitly). Forward speed is recomputed, and the
+/// impact speed is stashed in the goto arg for the post-window resolution
+/// (>= 38 -> knockback, else soft bonk).
+fn enter_air_hit_wall(cx: &mut ActionCx, n: glam::Vec3) -> ActionResult {
+    let speed = (cx.state.vel.x * cx.state.vel.x + cx.state.vel.z * cx.state.vel.z).sqrt();
+    let dot = cx.state.vel.x * n.x + cx.state.vel.z * n.z;
+    if dot < 0.0 {
+        cx.state.vel.x -= dot * n.x;
+        cx.state.vel.z -= dot * n.z;
+    }
+    let (fx, fz) = cx.forward_xz();
+    cx.state.forward_speed = cx.state.vel.x * fx + cx.state.vel.z * fz;
+    cx.timeline.slot = slot::AIR_HIT_WALL;
+    cx.goto(ActionId::AIR_HIT_WALL, speed as u32)
+}
+
+/// Soft bonk entry: keeps the (bounced) forward speed, no air control.
+pub fn enter_soft_bonk(cx: &mut ActionCx) -> ActionResult {
+    cx.timeline.slot = slot::SOFT_BONK;
+    cx.goto(ActionId::SOFT_BONK, 0)
+}
+
+/// Backwards air knockback entry. `hard` selects the hard variant
+/// (action_arg = 1; consumed by Phase E ground knockbacks).
+pub fn enter_backward_air_kb(
+    cx: &mut ActionCx,
+    wall_normal: glam::Vec3,
+    hard: bool,
+) -> ActionResult {
     // spec: knockback.vertical / knockback.backward_speed (verify)
     let away = crate::trig::atan2(wall_normal.x, wall_normal.z);
     cx.state.face_yaw = away;
     cx.state.forward_speed = -15.0;
     set_air_velocity(cx, 40.0);
     cx.timeline.slot = slot::AIR_KNOCKBACK;
-    cx.goto(ActionId::AIR_KNOCKBACK, 0)
+    let id = if hard {
+        ActionId::HARD_BACKWARD_AIR_KB
+    } else {
+        ActionId::BACKWARD_AIR_KB
+    };
+    cx.goto(id, hard as u32)
+}
+
+/// Forwards air knockback entry: forward forced to +16, no air control.
+/// `hard` selects the hard variant (action_arg = 1; Phase E consumes it).
+/// Landing currently routes to FREEFALL_LAND (note); Phase E adds the
+/// forward ground knockback.
+pub fn enter_forward_air_kb(cx: &mut ActionCx, hard: bool) -> ActionResult {
+    cx.state.forward_speed = 16.0;
+    let (fx, fz) = cx.forward_xz();
+    cx.state.vel.x = fx * 16.0;
+    cx.state.vel.z = fz * 16.0;
+    cx.timeline.slot = slot::AIR_KNOCKBACK;
+    let id = if hard {
+        ActionId::HARD_FORWARD_AIR_KB
+    } else {
+        ActionId::FORWARD_AIR_KB
+    };
+    cx.goto(id, hard as u32)
+}
+
+/// Steep jump entry: vy = 42 + forward/4; the lateral velocity component
+/// is scaled by 0.75, re-aiming motion along the slope.
+pub fn enter_steep_jump(cx: &mut ActionCx) -> ActionResult {
+    // spec: jump.steep_vertical (decomp-derived)
+    let vy = 42.0 + cx.state.forward_speed * 0.25;
+    let (fx, fz) = cx.forward_xz();
+    let fwd = cx.state.vel.x * fx + cx.state.vel.z * fz;
+    let side = (cx.state.vel.x * fz - cx.state.vel.z * fx) * 0.75;
+    cx.state.forward_speed = fwd;
+    cx.state.vel = Vec3::new(fx * fwd + fz * side, vy, fz * fwd - fx * side);
+    cx.timeline.slot = slot::STEEP_JUMP;
+    cx.events.push(Event::Jumped { velocity_y: vy });
+    cx.goto(ActionId::STEEP_JUMP, 0)
 }
 
 /// Try a ledge grab after a wall hit while falling.
@@ -619,19 +737,20 @@ fn try_ledge_grab(cx: &mut ActionCx, wall_normal: glam::Vec3) -> Option<ActionRe
     Some(cx.goto(ActionId::LEDGE_GRAB, 0))
 }
 
-/// Wall kick: a jump away from the wall; can chain off further walls.
-pub struct WallKick;
-impl ActionHandler for WallKick {
+/// Wall-kick flight: no-turn air model, jump-height control on, B -> dive,
+/// Z -> ground pound, ledge grab allowed; landing -> JUMP_LAND.
+pub struct WallKickAir;
+impl ActionHandler for WallKickAir {
     fn name(&self) -> &'static str {
-        "WallKick"
+        "WallKickAir"
     }
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
         if let Some(r) = air_common(
             cx,
             prev_buttons,
             &AirConfig {
-                height_control: false, // (verify)
-                can_ledge_grab: true,  // (verify)
+                height_control: true,
+                steer_rate: 0, // no-turn model: stick accelerates, facing holds
                 ..base_air_config()
             },
         ) {
@@ -642,29 +761,180 @@ impl ActionHandler for WallKick {
     }
 }
 
-/// Backwards air knockback: stunned, drifting away from the wall.
-pub struct AirKnockback;
-impl ActionHandler for AirKnockback {
+/// Air hit wall: transient 2-frame bonk state. A in the window -> wall kick
+/// (vy 52, turned 180 deg); after the window, impact speed >= 38 ->
+/// backwards air knockback (with a 5-frame late-kick allowance), else the
+/// soft bonk.
+///
+/// Deviation note: the reference executes the entry frame's body twice, so
+/// its kickable window ("firsties") is effectively 1 frame; this
+/// implementation runs the body once per frame, giving a full 2-frame
+/// window. The window length is the documented behavior; the double
+/// execution is not reproduced.
+pub struct AirHitWall;
+impl ActionHandler for AirHitWall {
     fn name(&self) -> &'static str {
-        "AirKnockback"
+        "AirHitWall"
+    }
+    fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
+        // Kickable window: the first two frames in this action.
+        if cx.state.action_timer <= 2 {
+            if cx.pressed(buttons::A, prev_buttons) {
+                return enter_wall_kick_flight(cx, cx.state.wall_normal, 52.0);
+            }
+            // Stunned drift: no air control, gravity applies.
+            cx.state.vel.y = (cx.state.vel.y - 4.0).max(-75.0);
+            let out = step_air(&cx.state, cx.world, cx.params);
+            cx.state.pos = out.pos;
+            cx.state.vel.y = out.vel_y;
+            cx.state.floor_y = out.floor.map(|f| f.y);
+            if let Some(f) = out.floor {
+                let fall_speed = out.fall_speed;
+                cx.events.push(Event::Landed { fall_speed });
+                cx.state.floor_kind = super::ground::surface_kind_index(f.kind);
+                cx.state.land_from = cx.state.action;
+                cx.timeline.slot = super::ground::slot::LAND;
+                return enter_landing_for(cx, fall_speed);
+            }
+            cx.timeline.slot = slot::AIR_HIT_WALL;
+            return ActionResult::Stay;
+        }
+        // Window expired: resolve by impact speed (carried in the goto arg).
+        if cx.arg() as f32 >= 38.0 {
+            // Late-kick allowance: A still kicks for 5 more frames via the
+            // wall_kick_timer path in air_cancels.
+            cx.state.wall_kick_timer = 5;
+            return enter_backward_air_kb(cx, cx.state.wall_normal, false);
+        }
+        enter_soft_bonk(cx)
+    }
+}
+
+/// Shared knockback config: stunned, no air control, no cancels.
+fn knockback_config() -> AirConfig {
+    AirConfig {
+        height_control: false,
+        steer_rate: 0, // stunned (verify)
+        air_drag_threshold: 32.0,
+        allow_dive: false,
+        allow_pound: false,
+        can_ledge_grab: false,
+        ..base_air_config()
+    }
+}
+
+/// Backwards air knockback: stunned, drifting away from the wall.
+/// Also serves the hard backward variant (action_arg = 1); behavior is
+/// identical until Phase E consumes the flag.
+pub struct BackwardAirKb;
+impl ActionHandler for BackwardAirKb {
+    fn name(&self) -> &'static str {
+        "BackwardAirKb"
+    }
+    fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
+        if let Some(r) = air_common(cx, prev_buttons, &knockback_config()) {
+            return r;
+        }
+        cx.timeline.slot = slot::AIR_KNOCKBACK;
+        ActionResult::Stay
+    }
+}
+
+/// Forwards air knockback: forward forced to +16 at entry, then stunned.
+/// Also serves the hard forward variant (action_arg = 1); Phase E consumes
+/// the flag for the forward ground knockback (landing is FREEFALL_LAND
+/// for now).
+pub struct ForwardAirKb;
+impl ActionHandler for ForwardAirKb {
+    fn name(&self) -> &'static str {
+        "ForwardAirKb"
+    }
+    fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
+        if let Some(r) = air_common(cx, prev_buttons, &knockback_config()) {
+            return r;
+        }
+        cx.timeline.slot = slot::AIR_KNOCKBACK;
+        ActionResult::Stay
+    }
+}
+
+/// Soft bonk: keeps the forward speed, no air control; landing ->
+/// FREEFALL_LAND. This is the < 38 wall-hit outcome. Unlike the knockbacks,
+/// the soft bonk leaves Mario against the wall, so ledge grabs are allowed
+/// (he can catch a ledge as he falls past it).
+pub struct SoftBonk;
+impl ActionHandler for SoftBonk {
+    fn name(&self) -> &'static str {
+        "SoftBonk"
     }
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
         if let Some(r) = air_common(
             cx,
             prev_buttons,
             &AirConfig {
-                height_control: false,
-                steer_rate: 0, // stunned (verify)
-                air_drag_threshold: 32.0,
-                allow_dive: false,
-                allow_pound: false,
-                can_ledge_grab: false,
-                ..base_air_config()
+                can_ledge_grab: true,
+                ..knockback_config()
             },
         ) {
             return r;
         }
-        cx.timeline.slot = slot::AIR_KNOCKBACK;
+        cx.timeline.slot = slot::SOFT_BONK;
+        ActionResult::Stay
+    }
+}
+
+/// Steep jump: forward speed decays x0.98/frame with no stick control;
+/// jump-height control applies; landing while still moving backward along
+/// facing slides, otherwise jump-lands; walls stop the character dead.
+pub struct SteepJump;
+impl ActionHandler for SteepJump {
+    fn name(&self) -> &'static str {
+        "SteepJump"
+    }
+    fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
+        let cfg = AirConfig {
+            height_control: true, // steep jumps honor jump-height control
+            ..base_air_config()
+        };
+        if let Some(r) = air_cancels(cx, prev_buttons, &cfg) {
+            return r;
+        }
+        // Forward decays x0.98/frame; no stick control.
+        let (fx, fz) = cx.forward_xz();
+        let fwd = (cx.state.vel.x * fx + cx.state.vel.z * fz) * 0.98;
+        let side = cx.state.vel.x * fz - cx.state.vel.z * fx;
+        cx.state.vel.x = fx * fwd + fz * side;
+        cx.state.vel.z = fz * fwd - fx * side;
+        cx.state.forward_speed = fwd;
+        // Gravity applies after movement (below the step).
+        let out = step_air(&cx.state, cx.world, cx.params);
+        cx.state.pos = out.pos;
+        cx.state.vel.y = out.vel_y;
+        cx.state.floor_y = out.floor.map(|f| f.y);
+        if out.wall_hit {
+            // Stop dead; the next ground tick sorts out the floor.
+            cx.state.vel.x = 0.0;
+            cx.state.vel.z = 0.0;
+            cx.state.forward_speed = 0.0;
+            cx.timeline.slot = super::ground::slot::DECEL;
+            return cx.goto(ActionId::DECELERATING, 0);
+        }
+        if let Some(f) = out.floor {
+            let fall_speed = out.fall_speed;
+            cx.events.push(Event::Landed { fall_speed });
+            cx.state.floor_kind = super::ground::surface_kind_index(f.kind);
+            cx.state.land_from = ActionId::STEEP_JUMP;
+            cx.timeline.slot = super::ground::slot::LAND;
+            return enter_landing_for(cx, fall_speed);
+        }
+        // Jump-height control: A released while rising fast quarters vy.
+        if cx.input.buttons & buttons::A == 0
+            && cx.state.vel.y > cx.params.jump_height_control_threshold
+        {
+            cx.state.vel.y /= 4.0;
+        }
+        cx.state.vel.y = (cx.state.vel.y - 4.0).max(-75.0);
+        cx.timeline.slot = slot::STEEP_JUMP;
         ActionResult::Stay
     }
 }

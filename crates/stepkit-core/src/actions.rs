@@ -142,9 +142,15 @@ impl ActionRegistry {
         r.register_builtin(ActionId::FORWARD_ROLLOUT, air::ForwardRollout);
         r.register_builtin(ActionId::BACKWARD_ROLLOUT, air::BackwardRollout);
         r.register_builtin(ActionId::GROUND_POUND, air::GroundPound);
-        r.register_builtin(ActionId::WALL_KICK, air::WallKick);
+        r.register_builtin(ActionId::WALL_KICK_AIR, air::WallKickAir);
+        r.register_builtin(ActionId::AIR_HIT_WALL, air::AirHitWall);
+        r.register_builtin(ActionId::STEEP_JUMP, air::SteepJump);
+        r.register_builtin(ActionId::SOFT_BONK, air::SoftBonk);
+        r.register_builtin(ActionId::BACKWARD_AIR_KB, air::BackwardAirKb);
+        r.register_builtin(ActionId::HARD_BACKWARD_AIR_KB, air::BackwardAirKb);
+        r.register_builtin(ActionId::FORWARD_AIR_KB, air::ForwardAirKb);
+        r.register_builtin(ActionId::HARD_FORWARD_AIR_KB, air::ForwardAirKb);
         r.register_builtin(ActionId::LEDGE_GRAB, air::LedgeGrab);
-        r.register_builtin(ActionId::AIR_KNOCKBACK, air::AirKnockback);
         r.register_builtin(ActionId::FREEFALL, air::Freefall);
         r.register_builtin(ActionId::CROUCH, ground::Crouch);
         r.register_builtin(ActionId::CRAWL, ground::Crawl);
@@ -201,6 +207,12 @@ mod tests {
             ActionId::DIVE_SLIDE,
             ActionId::CROUCH_SLIDE,
             ActionId::STOMACH_SLIDE,
+            ActionId::WALL_KICK_AIR,
+            ActionId::AIR_HIT_WALL,
+            ActionId::STEEP_JUMP,
+            ActionId::SOFT_BONK,
+            ActionId::BACKWARD_AIR_KB,
+            ActionId::FORWARD_AIR_KB,
             ActionId::JUMP,
             ActionId::SLIDE_KICK,
             ActionId::FREEFALL,

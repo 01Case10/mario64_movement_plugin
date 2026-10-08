@@ -8,7 +8,7 @@
 
 use super::air::{
     enter_backflip, enter_dive, enter_double_jump, enter_jump, enter_long_jump, enter_side_flip,
-    enter_slide_kick, enter_triple_jump,
+    enter_slide_kick, enter_steep_jump, enter_triple_jump,
 };
 use super::{ActionCx, ActionHandler, ActionResult};
 use crate::angles::Angle;
@@ -204,6 +204,21 @@ fn enter_walking(cx: &mut ActionCx) -> ActionResult {
     cx.goto(ActionId::WALKING, 0)
 }
 
+/// A-jump from a ground action: a very steep floor (normal.y < 0.2924,
+/// ~73 deg) produces a steep jump instead of a normal jump.
+/// (decomp-derived steep-floor cutoff)
+fn enter_jump_or_steep(cx: &mut ActionCx) -> ActionResult {
+    let steep = cx
+        .world
+        .find_floor(cx.state.pos, 1.0)
+        .is_some_and(|f| f.normal.y < 0.2924);
+    if steep {
+        enter_steep_jump(cx)
+    } else {
+        enter_jump(cx)
+    }
+}
+
 /// Idle: standing still on the ground.
 pub struct Idle;
 impl ActionHandler for Idle {
@@ -255,7 +270,7 @@ impl ActionHandler for Walking {
             return enter_long_jump(cx);
         }
         if cx.pressed(buttons::A, prev_buttons) {
-            return enter_jump(cx);
+            return enter_jump_or_steep(cx);
         }
         // Dive: B with speed >= 29 and raw stick mag > 48.
         if cx.pressed(buttons::B, prev_buttons)
@@ -384,7 +399,7 @@ impl ActionHandler for Braking {
             return enter_long_jump(cx);
         }
         if cx.pressed(buttons::A, prev_buttons) {
-            return enter_jump(cx);
+            return enter_jump_or_steep(cx);
         }
         // Dive: B with speed >= 29 and raw stick mag > 48.
         if cx.pressed(buttons::B, prev_buttons)
@@ -437,7 +452,7 @@ impl ActionHandler for Decelerating {
             return enter_long_jump(cx);
         }
         if cx.pressed(buttons::A, prev_buttons) {
-            return enter_jump(cx);
+            return enter_jump_or_steep(cx);
         }
         // Dive: B with speed >= 29 and raw stick mag > 48.
         if cx.pressed(buttons::B, prev_buttons)
@@ -683,7 +698,7 @@ impl ActionHandler for Crawl {
 /// not to a per-frame action. Facing within +/-0x4000 (+/-90 deg) of
 /// downhill -> butt slide; otherwise -> stomach slide. On near-flat
 /// slide floors the downhill direction is degenerate, so default to butt.
-fn begin_sliding(cx: &mut ActionCx) -> ActionResult {
+pub fn begin_sliding(cx: &mut ActionCx) -> ActionResult {
     let downhill_yaw = cx.world.find_floor(cx.state.pos, 1.0).and_then(|f| {
         let steep = (f.normal.x * f.normal.x + f.normal.z * f.normal.z).sqrt();
         if steep > 0.02 {
