@@ -975,9 +975,12 @@ fn try_ledge_grab(cx: &mut ActionCx, wall_normal: glam::Vec3) -> Option<ActionRe
     // spec: ledge.search_inward / ledge.search_up (verified)
     let search = cx.state.pos + into_wall * 60.0 + glam::Vec3::new(0.0, 160.0, 0.0);
     let floor = cx.world.find_floor(search, 0.0)?;
-    // Grab: snap to the floor at the search xz (10 units into the wall,
-    // per the wiki), face the wall, kill velocity.
-    cx.state.pos = glam::Vec3::new(search.x, floor.y, search.z);
+    // Grab: snap so Mario's HANDS are at the ledge top, body hanging below:
+    // feet end up one body-height under the grabbed floor. (Snapping the
+    // feet to floor.y leaves him standing ON the ledge in the grab pose.)
+    // Face the wall, kill velocity.
+    let hang = cx.params.height;
+    cx.state.pos = glam::Vec3::new(search.x, floor.y - hang, search.z);
     cx.state.vel = glam::Vec3::ZERO;
     cx.state.forward_speed = 0.0;
     cx.state.face_yaw = crate::trig::atan2(into_wall.x, into_wall.z);
@@ -1206,17 +1209,23 @@ impl ActionHandler for LedgeGrab {
         "LedgeGrab"
     }
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
-        // Release: the ledge floor got too steep.
+        // Release: the ledge floor he's hanging from got too steep.
+        // Probe at hand height: his feet dangle a full body-height below
+        // the grab point, so a feet-level probe would miss the ledge.
         // spec: ledge.release_slope_y (decomp-derived)
-        if let Some(f) = cx.world.find_floor(cx.state.pos, 1.0) {
+        let hands = cx.state.pos + glam::Vec3::new(0.0, cx.params.height, 0.0);
+        if let Some(f) = cx.world.find_floor(hands, 1.0) {
             if f.normal.y < 0.9063 {
                 cx.timeline.slot = slot::FREEFALL;
                 return cx.goto(ActionId::FREEFALL, 0);
             }
         }
-        // A: fast climb, needs 160 units of headroom.
+        // A: fast climb, needs 160 units of headroom above the ledge.
+        // Probe from the hands (the grab point): the feet dangle a full
+        // body-height below, so a feet-level probe would see the ledge's
+        // own underside as a ceiling and wrongly block the climb.
         if cx.pressed(buttons::A, prev_buttons)
-            && cx.world.find_ceiling(cx.state.pos, 160.0).is_none()
+            && cx.world.find_ceiling(hands, 160.0).is_none()
         {
             return cx.goto(ActionId::LEDGE_CLIMB_FAST, 0);
         }
@@ -1258,7 +1267,11 @@ fn ledge_pull_up(cx: &mut ActionCx, distance: f32) -> ActionResult {
     let (fx, fz) = cx.forward_xz();
     cx.state.pos.x += fx * distance;
     cx.state.pos.z += fz * distance;
-    if let Some(f) = cx.world.find_floor(cx.state.pos, 10.0) {
+    // Snap the feet onto the ledge the hands are holding: probe at hand
+    // height, since the feet dangle a full body-height below the grab point
+    // and a feet-level probe would find the ground far below instead.
+    let hands = cx.state.pos + glam::Vec3::new(0.0, cx.params.height, 0.0);
+    if let Some(f) = cx.world.find_floor(hands, 10.0) {
         cx.state.pos.y = f.y;
         cx.state.floor_y = Some(f.y);
     }
