@@ -38,6 +38,7 @@ pub mod slot {
     pub const STEEP_JUMP: u32 = 30;
     pub const AIR_HIT_WALL: u32 = 31;
     pub const SOFT_BONK: u32 = 32;
+    pub const JUMP_KICK: u32 = 37;
 }
 
 /// Per-action air behavior switches.
@@ -77,9 +78,14 @@ fn air_cancels(cx: &mut ActionCx, prev_buttons: u16, cfg: &AirConfig) -> Option<
         let n = cx.state.wall_normal;
         return Some(enter_wall_kick(cx, n));
     }
-    if cfg.allow_dive && cx.pressed(buttons::B, prev_buttons) && cx.state.forward_speed > 28.0 {
+    if cfg.allow_dive && cx.pressed(buttons::B, prev_buttons) {
         // spec: dive.air_speed_threshold (verified: wiki:Dive@19303)
-        return Some(enter_dive(cx, false));
+        if cx.state.forward_speed > 28.0 {
+            return Some(enter_dive(cx, false));
+        }
+        // Slow air: a jump kick instead of a dive.
+        // spec: combat.jump_kick_speed_threshold (decomp-derived)
+        return Some(enter_jump_kick(cx));
     }
     if cfg.allow_pound && cx.pressed(buttons::Z, prev_buttons) {
         return Some(enter_ground_pound(cx));
@@ -331,6 +337,30 @@ fn enter_landing_for(cx: &mut ActionCx, fall_speed: f32) -> ActionResult {
                 cx.goto(ActionId::JUMP_LAND, arg)
             }
         }
+        // Air knockbacks land into the matching ground knockbacks. The
+        // hard variants are separate action ids (the hard flag travels as
+        // the id, with arg 1 as well).
+        ActionId::BACKWARD_AIR_KB => {
+            super::ground::enter_ground_kb(cx, ActionId::BACKWARD_GROUND_KB)
+        }
+        ActionId::HARD_BACKWARD_AIR_KB => {
+            super::ground::enter_ground_kb(cx, ActionId::HARD_BACKWARD_GROUND_KB)
+        }
+        ActionId::FORWARD_AIR_KB => super::ground::enter_ground_kb(cx, ActionId::FORWARD_GROUND_KB),
+        ActionId::HARD_FORWARD_AIR_KB => {
+            super::ground::enter_ground_kb(cx, ActionId::HARD_FORWARD_GROUND_KB)
+        }
+        // Soft bonk: soft ground knockback by the sign of forward speed.
+        ActionId::SOFT_BONK => {
+            let id = if cx.state.forward_speed < 0.0 {
+                ActionId::SOFT_BACKWARD_GROUND_KB
+            } else {
+                ActionId::SOFT_FORWARD_GROUND_KB
+            };
+            super::ground::enter_ground_kb(cx, id)
+        }
+        // Jump kick: plain freefall landing.
+        ActionId::JUMP_KICK => cx.goto(ActionId::FREEFALL_LAND, arg),
         _ => cx.goto(ActionId::FREEFALL_LAND, arg),
     }
 }
@@ -588,6 +618,17 @@ pub fn enter_backward_rollout(cx: &mut ActionCx) -> ActionResult {
     cx.goto(ActionId::BACKWARD_ROLLOUT, 0)
 }
 
+/// Jump kick entry: vy = 20, horizontal velocity kept. Hitbox frames 0-7
+/// are documented only: no enemies exist in the sim, so no hitboxes are
+/// simulated.
+pub fn enter_jump_kick(cx: &mut ActionCx) -> ActionResult {
+    // spec: combat.jump_kick_vy (decomp-derived)
+    set_air_velocity(cx, 20.0);
+    cx.timeline.slot = slot::JUMP_KICK;
+    cx.events.push(Event::Jumped { velocity_y: 20.0 });
+    cx.goto(ActionId::JUMP_KICK, 0)
+}
+
 /// Slide kick, airborne: after 30 frames and more than 500 above the
 /// floor it becomes a freefall; the first touchdown bounces at half
 /// impact speed (see air_common), the second becomes a ground slide.
@@ -627,6 +668,37 @@ air_action!(
     base_air_config(),
     slot::ROLLOUT
 );
+
+/// Jump kick: B in slow air, or A on the first punch frame. Committed to
+/// the kick (no dive cancel); ground pound still allowed. Landing ->
+/// FREEFALL_LAND. A slow wall hit stops the kick into a decel (faster hits
+/// take the shared air-hit-wall path inside air_common).
+pub struct JumpKick;
+impl ActionHandler for JumpKick {
+    fn name(&self) -> &'static str {
+        "JumpKick"
+    }
+    fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
+        let cfg = AirConfig {
+            allow_dive: false, // committed to the kick (verify)
+            ..base_air_config()
+        };
+        if let Some(r) = air_common(cx, prev_buttons, &cfg) {
+            return r;
+        }
+        // Wall -> stop: the graze path in air_common kept the character
+        // against the wall; end the kick here instead of sliding along.
+        if cx.state.wall_hit {
+            cx.state.vel.x = 0.0;
+            cx.state.vel.z = 0.0;
+            cx.state.forward_speed = 0.0;
+            cx.timeline.slot = super::ground::slot::DECEL;
+            return cx.goto(ActionId::DECELERATING, 0);
+        }
+        cx.timeline.slot = slot::JUMP_KICK;
+        ActionResult::Stay
+    }
+}
 
 /// Freefall: walked off a ledge. Dive and pound allowed (verify for pound).
 /// Arg 2 = dead fall (health < 0x100): no input response.
@@ -683,8 +755,14 @@ impl ActionHandler for GroundPound {
             cx.timeline.slot = slot::GROUND_POUND;
             return ActionResult::Stay;
         }
-        // Slam phase.
-        if let Some(r) = air_cancels(cx, prev_buttons, &base_air_config()) {
+        // Slam phase. No dive/kick cancel mid-slam: B did nothing here
+        // before the slow-air jump-kick branch existed, and the slam
+        // zeroes horizontal speed anyway. Pound re-entry stays allowed.
+        let slam_cfg = AirConfig {
+            allow_dive: false,
+            ..base_air_config()
+        };
+        if let Some(r) = air_cancels(cx, prev_buttons, &slam_cfg) {
             return r;
         }
         cx.state.vel.x = 0.0;

@@ -140,6 +140,27 @@ impl ActionRegistry {
         r.register_builtin(ActionId::SLIDE_KICK_SLIDE, ground::SlideKickSlide);
         r.register_builtin(ActionId::IN_QUICKSAND, ground::InQuicksand);
         r.register_builtin(ActionId::QUICKSAND_JUMP_LAND, ground::QuicksandJumpLand);
+        r.register_builtin(ActionId::PUNCHING, ground::Punching);
+        r.register_builtin(ActionId::MOVE_PUNCHING, ground::MovePunching);
+        r.register_builtin(ActionId::BACKWARD_GROUND_KB, ground::BackwardGroundKb);
+        r.register_builtin(ActionId::FORWARD_GROUND_KB, ground::ForwardGroundKb);
+        r.register_builtin(
+            ActionId::HARD_BACKWARD_GROUND_KB,
+            ground::HardBackwardGroundKb,
+        );
+        r.register_builtin(
+            ActionId::HARD_FORWARD_GROUND_KB,
+            ground::HardForwardGroundKb,
+        );
+        r.register_builtin(
+            ActionId::SOFT_BACKWARD_GROUND_KB,
+            ground::SoftBackwardGroundKb,
+        );
+        r.register_builtin(
+            ActionId::SOFT_FORWARD_GROUND_KB,
+            ground::SoftForwardGroundKb,
+        );
+        r.register_builtin(ActionId::GROUND_BONK, ground::GroundBonk);
         r.register_builtin(ActionId::JUMP, air::SingleJump);
         r.register_builtin(ActionId::DOUBLE_JUMP, air::DoubleJump);
         r.register_builtin(ActionId::TRIPLE_JUMP, air::TripleJump);
@@ -159,6 +180,7 @@ impl ActionRegistry {
         r.register_builtin(ActionId::HARD_BACKWARD_AIR_KB, air::BackwardAirKb);
         r.register_builtin(ActionId::FORWARD_AIR_KB, air::ForwardAirKb);
         r.register_builtin(ActionId::HARD_FORWARD_AIR_KB, air::ForwardAirKb);
+        r.register_builtin(ActionId::JUMP_KICK, air::JumpKick);
         r.register_builtin(ActionId::LEDGE_GRAB, air::LedgeGrab);
         r.register_builtin(ActionId::LEDGE_CLIMB_FAST, air::LedgeClimbFast);
         r.register_builtin(ActionId::LEDGE_CLIMB_SLOW_1, air::LedgeClimbSlow1);
@@ -225,6 +247,16 @@ mod tests {
             ActionId::SOFT_BONK,
             ActionId::BACKWARD_AIR_KB,
             ActionId::FORWARD_AIR_KB,
+            ActionId::JUMP_KICK,
+            ActionId::PUNCHING,
+            ActionId::MOVE_PUNCHING,
+            ActionId::BACKWARD_GROUND_KB,
+            ActionId::FORWARD_GROUND_KB,
+            ActionId::HARD_BACKWARD_GROUND_KB,
+            ActionId::HARD_FORWARD_GROUND_KB,
+            ActionId::SOFT_BACKWARD_GROUND_KB,
+            ActionId::SOFT_FORWARD_GROUND_KB,
+            ActionId::GROUND_BONK,
             ActionId::JUMP,
             ActionId::SLIDE_KICK,
             ActionId::FREEFALL,
