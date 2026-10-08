@@ -95,6 +95,9 @@ pub fn state_from_frame(f: &TraceFrame) -> CharacterState {
         },
         up: Vec3::Y,
         warped: false,
+        ik_hand_l: None,
+        ik_hand_r: None,
+        grab_point: None,
     }
 }
 

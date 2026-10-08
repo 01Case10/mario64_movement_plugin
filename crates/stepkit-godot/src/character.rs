@@ -123,6 +123,28 @@ impl StepChar3D {
         self.timeline.slot as i64
     }
 
+    /// IK hand target (left) in Godot meters, for 2-bone arm IK during
+    /// ledge-grab actions. Returns Vector3.ZERO when no hint is active
+    /// (all other actions). Renderer-only output; the sim never solves IK.
+    #[func]
+    pub fn get_ik_hand_l(&self) -> Vector3 {
+        match self.state.ik_hand_l {
+            Some(p) => Vector3::new(p.x * self.unit_scale, p.y * self.unit_scale, p.z * self.unit_scale),
+            None => Vector3::ZERO,
+        }
+    }
+
+    /// IK hand target (right) in Godot meters, for 2-bone arm IK during
+    /// ledge-grab actions. Returns Vector3.ZERO when no hint is active
+    /// (all other actions). Renderer-only output; the sim never solves IK.
+    #[func]
+    pub fn get_ik_hand_r(&self) -> Vector3 {
+        match self.state.ik_hand_r {
+            Some(p) => Vector3::new(p.x * self.unit_scale, p.y * self.unit_scale, p.z * self.unit_scale),
+            None => Vector3::ZERO,
+        }
+    }
+
     /// Teleport the character (resets interpolation).
     ///
     /// This is a full reset: position, velocity, action, speeds, and timers
