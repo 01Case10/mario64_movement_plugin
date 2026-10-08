@@ -255,14 +255,28 @@ fn enter_walking(cx: &mut ActionCx) -> ActionResult {
     cx.goto(ActionId::WALKING, 0)
 }
 
-/// A-jump from a ground action: a very steep floor (normal.y < 0.2924,
-/// ~73 deg) produces a steep jump instead of a normal jump.
-/// (decomp-derived steep-floor cutoff)
+/// A-jump from a ground action: on a steep floor (normal.y at or below the
+/// class threshold, ~30 deg for normal ground) while NOT facing downhill,
+/// Mario does a steep jump instead of a normal jump.
+/// (decomp `mario_floor_is_steep`: class thresholds 0.9659258 / 0.9396926 /
+/// 0.8660254, steep only when not facing downhill)
 fn enter_jump_or_steep(cx: &mut ActionCx) -> ActionResult {
-    let steep = cx
-        .world
-        .find_floor(cx.state.pos, 1.0)
-        .is_some_and(|f| f.normal.y < 0.2924);
+    let steep = cx.world.find_floor(cx.state.pos, 1.0).is_some_and(|f| {
+        if f.normal.y > SurfaceClass::of(f.kind).steep_jump_y() {
+            return false;
+        }
+        // Facing downhill: within 0x4000 (90 deg) of the downhill yaw (the
+        // floor normal's horizontal projection points downhill), or moving
+        // backward.
+        let h = (f.normal.x * f.normal.x + f.normal.z * f.normal.z).sqrt();
+        let facing_downhill = if h > 1e-4 {
+            let downhill_yaw = crate::trig::atan2(f.normal.x, f.normal.z);
+            cx.state.face_yaw.diff_to(downhill_yaw).abs() <= 0x4000
+        } else {
+            false
+        };
+        !(facing_downhill || cx.state.forward_speed <= -1.0)
+    });
     if steep {
         enter_steep_jump(cx)
     } else {

@@ -72,6 +72,19 @@ impl SurfaceClass {
         }
     }
 
+    /// Normal.y at or below which a jump from this floor becomes a steep
+    /// jump (when not facing downhill). Decomp `mario_floor_is_steep`
+    /// thresholds: ~cos(15 deg) for very slippery, ~cos(20 deg) for
+    /// slippery, ~cos(30 deg) otherwise.
+    pub fn steep_jump_y(self) -> f32 {
+        match self {
+            SurfaceClass::VerySlippery => 0.9659258,
+            SurfaceClass::Slippery => 0.9396926,
+            SurfaceClass::Default => 0.8660254,
+            SurfaceClass::NotSlippery => 0.8660254,
+        }
+    }
+
     /// Normal.y at or below which the floor counts as a slope (for
     /// slope-speed purposes). spec: surface.class_slope_y
     pub fn slope_y(self) -> f32 {
