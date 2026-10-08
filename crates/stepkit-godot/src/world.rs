@@ -28,6 +28,13 @@ pub struct StepWorld3D {
 
 #[godot_api]
 impl StepWorld3D {
+    /// Bake a water volume: flat surface at `y` over the XZ rectangle.
+    #[func]
+    pub fn bake_water(&mut self, y: f32, min_x: f32, max_x: f32, min_z: f32, max_z: f32) {
+        let s = 1.0 / self.unit_scale.max(1e-6);
+        self.world.add_water(y * s, min_x * s, max_x * s, min_z * s, max_z * s);
+    }
+
     /// Bake an axis-aligned box (in global coordinates).
     #[func]
     pub fn bake_box(&mut self, min: Vector3, max: Vector3, kind: i64) {

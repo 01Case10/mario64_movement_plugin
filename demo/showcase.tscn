@@ -1,0 +1,87 @@
+[gd_scene load_steps=14 format=3 uid="uid://stepkitshowcase"]
+
+[ext_resource type="Script" path="res://showcase.gd" id="1"]
+[ext_resource type="Mesh" path="res://player_mesh.tres" id="2"]
+[ext_resource type="PackedScene" path="res://stepbot.tscn" id="3"]
+
+[sub_resource type="BoxMesh" id="floor"]
+size = Vector3(60, 1, 60)
+
+[sub_resource type="BoxMesh" id="wall"]
+size = Vector3(6, 6, 1)
+
+[sub_resource type="BoxMesh" id="ledge"]
+size = Vector3(6, 0.5, 3)
+
+[sub_resource type="BoxMesh" id="pool_floor"]
+size = Vector3(10, 1, 10)
+
+[sub_resource type="PlaneMesh" id="water_plane"]
+size = Vector2(10, 10)
+
+[sub_resource type="StandardMaterial3D" id="ground_mat"]
+albedo_color = Color(0.25, 0.45, 0.3, 1)
+
+[sub_resource type="StandardMaterial3D" id="wall_mat"]
+albedo_color = Color(0.6, 0.35, 0.25, 1)
+
+[sub_resource type="StandardMaterial3D" id="water_mat"]
+albedo_color = Color(0.2, 0.4, 0.8, 0.7)
+transparency = 1
+
+[node name="Showcase" type="Node3D"]
+script = ExtResource("1")
+
+[node name="World" type="StepWorld3D" parent="."]
+
+[node name="Player" type="StepChar3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.1, 0)
+
+[node name="StepBot" parent="Player" instance=ExtResource("3")]
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.9, 0.44, 0, -0.44, 0.9, 0, 5, 8)
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.7, 0.7, 0, -0.7, 0.7, 0, 10, 0)
+
+[node name="FloorMesh" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
+mesh = SubResource("floor")
+surface_material_override/0 = SubResource("ground_mat")
+
+[node name="WallMesh" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3, 15)
+mesh = SubResource("wall")
+surface_material_override/0 = SubResource("wall_mat")
+
+[node name="LedgeMesh" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 2.5, 10)
+mesh = SubResource("ledge")
+surface_material_override/0 = SubResource("wall_mat")
+
+[node name="PoolFloorMesh" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, -3.5, -10)
+mesh = SubResource("pool_floor")
+surface_material_override/0 = SubResource("ground_mat")
+
+[node name="WaterMesh" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0, -10)
+mesh = SubResource("water_plane")
+surface_material_override/0 = SubResource("water_mat")
+
+[node name="HUD" type="CanvasLayer" parent="."]
+
+[node name="ActionLabel" type="Label" parent="HUD"]
+offset_left = 20
+offset_top = 20
+offset_right = 600
+offset_bottom = 60
+theme_override_font_sizes/font_size = 36
+
+[node name="SegmentLabel" type="Label" parent="HUD"]
+offset_left = 20
+offset_top = 65
+offset_right = 600
+offset_bottom = 100
+theme_override_font_sizes/font_size = 24
