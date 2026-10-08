@@ -391,20 +391,20 @@ func _choreography() -> void:
 			in_sy = 0.0
 			if seg_tick % 30 == 5 and player.global_position.y < -0.3:
 				_press(BTN_A, 2)
-		19:  # Flutter kick, then rise gently (no breach) and A near the surface -> water jump.
+		19:  # Flutter kick, rise, then A + hard stick at the surface -> water jump.
 			if seg_tick < 90:
 				in_b = BTN_A
 				in_sx = 0.6 * sin(seg_tick * 0.15)
 			else:
-				# Gentle rise: moderate pitch (no breach), tap A to stroke upward.
+				# Rise with moderate stick (40 < 60 water-jump threshold, so
+				# no accidental trigger); at the surface, one decisive A
+				# press with hard stick_up.
 				var depth := player.global_position.y
-				if depth > -0.1:
+				if depth > -0.05 and not aux_flag:
 					in_sy = 1.0
+					_press(BTN_A, 2)
+					aux_flag = true
 				else:
 					in_sy = 0.5
-				if seg_tick % 20 == 5 and depth < -0.03:
-					_press(BTN_A, 2)
-				if depth > -0.03 and current_action in SWIM_STATES \
-						and tick - last_press_tick > 10:
-					_press(BTN_A, 2)
-					last_press_tick = tick
+					if seg_tick % 20 == 5:
+						_press(BTN_A, 2)
