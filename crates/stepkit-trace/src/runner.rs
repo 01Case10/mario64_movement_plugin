@@ -14,176 +14,49 @@ use stepkit_core::input::RawInput;
 use stepkit_core::params::MovementParams;
 use stepkit_core::state::{ActionId, CharacterState};
 use stepkit_core::step::{tick, Timeline};
-use stepkit_core::world::{CeilingHit, CollisionWorld, FloorHit, SurfaceKind, WallResolve};
+use stepkit_core::surface::SurfaceWorld;
+use stepkit_core::trig;
 
-/// Collision backend built from a scenario's own geometry (boxes and ramps).
-/// The reference `SurfaceWorld` arrives in phase 2; this backend exists so
-/// the data pipeline round-trips end to end in phase 1.
-#[derive(Clone, Debug, Default)]
-pub struct ScenarioWorld {
-    boxes: Vec<ScenarioBox>,
-    ramps: Vec<ScenarioRamp>,
-}
+/// Bake a scenario's geometry into the reference [`SurfaceWorld`] backend.
+use stepkit_core::world::SurfaceKind;
 
-#[derive(Clone, Debug)]
-struct ScenarioBox {
-    min: Vec3,
-    max: Vec3,
-    kind: SurfaceKind,
-}
-
-#[derive(Clone, Debug)]
-struct ScenarioRamp {
-    origin: Vec3,
-    dir: Vec3,
-    length: f32,
-    height: f32,
-    width: f32,
-    kind: SurfaceKind,
-}
-
-impl ScenarioWorld {
-    pub fn from_scenario(scenario: &Scenario) -> Self {
-        let mut world = ScenarioWorld::default();
-        for g in &scenario.geometry {
-            match g {
-                Geometry::Box(b) => world.boxes.push(ScenarioBox {
-                    min: Vec3::new(b.min.0, b.min.1, b.min.2),
-                    max: Vec3::new(b.max.0, b.max.1, b.max.2),
-                    kind: SurfaceKind::Default,
-                }),
-                Geometry::Ramp(r) => {
-                    let d = Vec3::new(r.dir.0, 0.0, r.dir.1);
-                    world.ramps.push(ScenarioRamp {
-                        origin: Vec3::new(r.origin.0, r.origin.1, r.origin.2),
-                        dir: d.normalize_or_zero(),
-                        length: r.length,
-                        height: r.height,
-                        width: r.width,
-                        kind: SurfaceKind::Default,
-                    });
-                }
-            }
-        }
-        world
-    }
-
-    fn floor_height_at(&self, x: f32, z: f32) -> Option<(f32, SurfaceKind)> {
-        let mut best: Option<(f32, SurfaceKind)> = None;
-        for b in &self.boxes {
-            if x >= b.min.x && x <= b.max.x && z >= b.min.z && z <= b.max.z && b.max.y <= 0.0 + 1e6
-            {
-                // Top face counts as floor when the query is above it.
-                let y = b.max.y;
-                if best.is_none_or(|(by, _)| y > by) {
-                    best = Some((y, b.kind));
-                }
-            }
-        }
-        for r in &self.ramps {
-            let rel = Vec3::new(x, 0.0, z) - Vec3::new(r.origin.x, 0.0, r.origin.z);
-            let along = rel.dot(r.dir);
-            let across = (rel - r.dir * along).length();
-            if along >= 0.0 && along <= r.length && across <= r.width * 0.5 {
-                let y = r.origin.y + (along / r.length) * r.height;
-                if best.is_none_or(|(by, _)| y > by) {
-                    best = Some((y, r.kind));
-                }
-            }
-        }
-        best
+/// Map a scenario geometry `kind` to a surface kind (0 = default).
+fn kind_of(kind: u8) -> SurfaceKind {
+    match kind {
+        1 => SurfaceKind::Slide,
+        2 => SurfaceKind::Quicksand,
+        _ => SurfaceKind::Default,
     }
 }
 
-impl CollisionWorld for ScenarioWorld {
-    fn find_floor(&self, pos: Vec3) -> Option<FloorHit> {
-        // Highest surface at or below pos.y (with a small tolerance).
-        let mut best: Option<FloorHit> = None;
-        // Sample the point plus a small cross so edges are not missed.
-        for (ox, oz) in [(0.0, 0.0), (1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0)] {
-            if let Some((y, kind)) = self.floor_height_at(pos.x + ox, pos.z + oz) {
-                if y <= pos.y + 1.0 && best.is_none_or(|b: FloorHit| y > b.y) {
-                    // Ramp normal from the slope; boxes are flat.
-                    let normal = Vec3::Y;
-                    best = Some(FloorHit {
-                        y,
-                        normal,
-                        kind,
-                        user_data: 0,
-                    });
-                }
+pub fn bake_scenario_world(scenario: &Scenario) -> SurfaceWorld {
+    let mut world = SurfaceWorld::new();
+    for g in &scenario.geometry {
+        match g {
+            Geometry::Box(b) => world.add_box(
+                Vec3::new(b.min.0, b.min.1, b.min.2),
+                Vec3::new(b.max.0, b.max.1, b.max.2),
+                kind_of(b.kind),
+                0,
+            ),
+            Geometry::Ramp(r) => {
+                let d = Vec3::new(r.dir.0, 0.0, r.dir.1).normalize_or_zero();
+                world.add_ramp(
+                    Vec3::new(r.origin.0, r.origin.1, r.origin.2),
+                    d,
+                    r.length,
+                    r.height,
+                    r.width,
+                    kind_of(r.kind),
+                    0,
+                );
             }
         }
-        best
     }
-
-    fn find_ceiling(&self, pos: Vec3, height: f32) -> Option<CeilingHit> {
-        let mut best: Option<CeilingHit> = None;
-        for b in &self.boxes {
-            if pos.x >= b.min.x && pos.x <= b.max.x && pos.z >= b.min.z && pos.z <= b.max.z {
-                let y = b.min.y;
-                if y >= pos.y && y <= pos.y + height && best.is_none_or(|c: CeilingHit| y < c.y) {
-                    best = Some(CeilingHit {
-                        y,
-                        normal: Vec3::NEG_Y,
-                    });
-                }
-            }
-        }
-        best
+    for w in &scenario.water {
+        world.add_water(w.y, w.min_x, w.max_x, w.min_z, w.max_z);
     }
-
-    fn resolve_walls(&self, pos: Vec3, _offset: f32, radius: f32) -> WallResolve {
-        let mut p = pos;
-        let mut hit = false;
-        let mut num_walls = 0;
-        let mut normal = Vec3::ZERO;
-        // Push out of box sides when the feet are within the box's y-range.
-        for b in &self.boxes {
-            if p.y + 1.0 < b.min.y || p.y > b.max.y {
-                continue;
-            }
-            let cx = p.x.clamp(b.min.x, b.max.x);
-            let cz = p.z.clamp(b.min.z, b.max.z);
-            let dx = p.x - cx;
-            let dz = p.z - cz;
-            let dist_sq = dx * dx + dz * dz;
-            if dist_sq < radius * radius {
-                // Inside or within radius: push out along the smallest penetration axis.
-                let pen_x = radius - (p.x - b.min.x).abs().min((p.x - b.max.x).abs());
-                let pen_z = radius - (p.z - b.min.z).abs().min((p.z - b.max.z).abs());
-                if pen_x < pen_z {
-                    let side = if p.x < (b.min.x + b.max.x) * 0.5 {
-                        -1.0
-                    } else {
-                        1.0
-                    };
-                    p.x += side * (pen_x + 0.01);
-                    normal = Vec3::new(side, 0.0, 0.0);
-                } else {
-                    let side = if p.z < (b.min.z + b.max.z) * 0.5 {
-                        -1.0
-                    } else {
-                        1.0
-                    };
-                    p.z += side * (pen_z + 0.01);
-                    normal = Vec3::new(0.0, 0.0, side);
-                }
-                hit = true;
-                num_walls += 1;
-            }
-        }
-        WallResolve {
-            pos: p,
-            hit,
-            num_walls,
-            normal,
-        }
-    }
-
-    fn water_level(&self, _x: f32, _z: f32) -> Option<f32> {
-        None
-    }
+    world
 }
 
 /// Reconstruct a [`CharacterState`] from a recorded frame, for
@@ -198,6 +71,7 @@ pub fn state_from_frame(f: &TraceFrame) -> CharacterState {
         face_roll: Angle(f.face_roll),
         action: ActionId(f.action),
         prev_action: ActionId(f.prev_action),
+        land_from: ActionId(f.land_from),
         action_state: f.action_state,
         action_timer: f.action_timer,
         action_arg: f.action_arg,
@@ -205,7 +79,11 @@ pub fn state_from_frame(f: &TraceFrame) -> CharacterState {
         ceil_y: Some(f.ceil_y),
         floor_kind: 0,
         wall_hit: f.wall_hit != 0,
-        wall_kick_timer: 0,
+        wall_kick_timer: f.wall_kick_timer,
+        wall_normal: {
+            let a = stepkit_core::angles::Angle(f.wall_normal_yaw);
+            Vec3::new(trig::sin(a), 0.0, trig::cos(a))
+        },
         up: Vec3::Y,
         warped: false,
     }
@@ -236,12 +114,15 @@ fn frame_from_state(
         face_roll: state.face_roll.0,
         action: state.action.0,
         prev_action: state.prev_action.0,
+        land_from: state.land_from.0,
         action_state: state.action_state,
         action_timer: state.action_timer,
         action_arg: state.action_arg,
         floor_y: state.floor_y.unwrap_or(0.0),
         ceil_y: state.ceil_y.unwrap_or(0.0),
         wall_hit: state.wall_hit as u8,
+        wall_kick_timer: state.wall_kick_timer,
+        wall_normal_yaw: trig::atan2(state.wall_normal.x, state.wall_normal.z).0,
         anim_slot: format!("slot_{}", timeline.slot),
         anim_frame: timeline.frame,
     }
@@ -249,7 +130,9 @@ fn frame_from_state(
 
 /// Run a scenario through the core and record the trace.
 pub fn run_scenario(scenario: &Scenario, params: &MovementParams, produced_by: &str) -> Trace {
-    let world = ScenarioWorld::from_scenario(scenario);
+    use stepkit_core::actions::ActionRegistry;
+    let world = bake_scenario_world(scenario);
+    let registry = ActionRegistry::sm64_style();
     let cam_yaw = match scenario.camera {
         crate::scenario::Camera::Fixed { yaw_deg } => Angle::from_degrees(yaw_deg),
     };
@@ -278,6 +161,7 @@ pub fn run_scenario(scenario: &Scenario, params: &MovementParams, produced_by: &
     // Frame 0: start state, carrying the first input.
     let first_input = inputs.first().copied().unwrap_or((0, 0, 0));
     frames.push(frame_from_state(0, first_input, cam_yaw, &state, &timeline));
+    let mut prev_buttons = 0u16;
     for (i, &(sx, sy, buttons)) in inputs.iter().enumerate() {
         let input = RawInput {
             stick_x: sx,
@@ -285,9 +169,18 @@ pub fn run_scenario(scenario: &Scenario, params: &MovementParams, produced_by: &
             buttons,
             cam_yaw,
         };
-        let (next, next_timeline, _events) = tick(state, input, &world, params, timeline);
+        let (next, next_timeline, _events) = tick(
+            state,
+            input,
+            &world,
+            params,
+            timeline,
+            &registry,
+            prev_buttons,
+        );
         state = next;
         timeline = next_timeline;
+        prev_buttons = buttons;
         let next_input = inputs.get(i + 1).copied().unwrap_or((0, 0, 0));
         frames.push(frame_from_state(
             i as u32 + 1,
@@ -323,6 +216,7 @@ mod tests {
                 max: (2000.0, 0.0, 2000.0),
                 kind: 0,
             })],
+            water: vec![],
             start: StartState {
                 pos: (0.0, 0.0, 0.0),
                 yaw_deg: 0.0,
@@ -348,11 +242,14 @@ mod tests {
     }
 
     #[test]
-    fn scenario_world_finds_flat_floor() {
+    fn baked_world_finds_flat_floor() {
+        use stepkit_core::world::CollisionWorld;
         let s = flat_walk_scenario(1);
-        let world = ScenarioWorld::from_scenario(&s);
-        let hit = world.find_floor(Vec3::new(10.0, 5.0, -3.0)).unwrap();
+        let world = bake_scenario_world(&s);
+        let hit = world.find_floor(Vec3::new(10.0, 5.0, -3.0), 1.0).unwrap();
         assert_eq!(hit.y, 0.0);
-        assert!(world.find_floor(Vec3::new(10.0, -200.0, -3.0)).is_none());
+        assert!(world
+            .find_floor(Vec3::new(10.0, -500.0, -3.0), 1.0)
+            .is_none());
     }
 }

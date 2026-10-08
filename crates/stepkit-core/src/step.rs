@@ -1,0 +1,286 @@
+//! The step engine: one deterministic `tick` per 30 Hz frame.
+//!
+//! Each frame the current action runs its documented cancel checks, decides
+//! its velocity, then calls a step routine that splits the move into four
+//! quarter-steps (wiki:Movement steps@19723). For each quarter-step the
+//! routine proposes a position, queries the world, and resolves the outcome:
+//! landing, wall hit, ceiling bump, or walking off a ledge.
+
+use crate::actions::{ActionCx, ActionRegistry, ActionResult};
+use crate::events::Event;
+use crate::input::RawInput;
+use crate::params::MovementParams;
+use crate::state::CharacterState;
+use crate::world::{CollisionWorld, FloorHit};
+use glam::Vec3;
+
+/// Number of sub-steps per frame (quarter steps).
+/// spec: step.quarter_steps (verified: wiki:Movement steps@19723)
+pub const QUARTER_STEPS: usize = 4;
+
+/// Animation timeline state for the current slot, owned by the core so that
+/// gameplay timing never depends on the renderer's animation player.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Timeline {
+    /// Stable slot id (see `stepkit-anim` manifest).
+    pub slot: u32,
+    /// Current frame within the slot.
+    pub frame: u32,
+    /// Playback speed multiplier.
+    pub speed: f32,
+    /// True when a non-looping slot has finished.
+    pub ended: bool,
+}
+
+/// Run one 30 Hz simulation tick: dispatch to the current action, run its
+/// checks and step routine, advance timers and the timeline.
+pub fn tick(
+    state: CharacterState,
+    input: RawInput,
+    world: &dyn CollisionWorld,
+    params: &MovementParams,
+    timeline: Timeline,
+    registry: &ActionRegistry,
+    prev_buttons: u16,
+) -> (CharacterState, Timeline, Vec<Event>) {
+    let mut state = state;
+    // action_timer counts completed ticks in this action.
+    state.action_timer = state.action_timer.wrapping_add(1);
+    state.warped = false;
+
+    let mut cx = ActionCx {
+        state,
+        input,
+        world,
+        params,
+        timeline,
+        events: Vec::new(),
+    };
+    let prev_slot = cx.timeline.slot;
+    let result = match registry.get(cx.state.action) {
+        Some(handler) => handler.tick(&mut cx, prev_buttons),
+        None => ActionResult::Stay, // unknown action: hold state (defensive)
+    };
+    let _ = result;
+    // Timeline: new slot restarts the frame counter.
+    if cx.timeline.slot != prev_slot {
+        cx.timeline.frame = 0;
+        cx.timeline.ended = false;
+    } else {
+        cx.timeline.frame = cx.timeline.frame.wrapping_add(1);
+    }
+    (cx.state, cx.timeline, cx.events)
+}
+
+/// Output of the ground step routine.
+pub struct GroundStepOut {
+    pub pos: Vec3,
+    pub floor: Option<FloorHit>,
+    pub wall_hit: bool,
+    pub wall_normal: Vec3,
+    pub walked_off: bool,
+}
+
+/// Ground step: move horizontally in quarter-steps, snap to the floor,
+/// push out of walls, detect walking off ledges.
+pub fn step_ground(
+    state: &CharacterState,
+    vx: f32,
+    vz: f32,
+    world: &dyn CollisionWorld,
+    params: &MovementParams,
+) -> GroundStepOut {
+    let mut pos = state.pos;
+    let mut floor = world.find_floor(pos, 1.0);
+    let mut wall_hit = false;
+    let mut wall_normal = Vec3::ZERO;
+    let mut walked_off = false;
+    for _ in 0..QUARTER_STEPS {
+        let step = Vec3::new(vx * 0.25, 0.0, vz * 0.25);
+        let mut proposed = pos + step;
+        // Walls.
+        let wr = world.resolve_walls(proposed, params.height * 0.5, params.radius);
+        if wr.hit {
+            wall_hit = true;
+            wall_normal = wr.normal;
+            proposed = wr.pos;
+        }
+        // Floor.
+        match world.find_floor(proposed, 1.0) {
+            None => {
+                walked_off = true;
+                pos = proposed;
+            }
+            Some(f) => {
+                if f.y > pos.y + params.ground_step_up {
+                    // Too tall to step onto: treat as a wall, revert.
+                    wall_hit = true;
+                    // (keep pre-step pos)
+                } else if f.y < pos.y - params.ground_step_down {
+                    walked_off = true;
+                    pos = proposed;
+                } else {
+                    pos = Vec3::new(proposed.x, f.y, proposed.z);
+                    floor = Some(f);
+                }
+            }
+        }
+    }
+    GroundStepOut {
+        pos,
+        floor,
+        wall_hit,
+        wall_normal,
+        walked_off,
+    }
+}
+
+/// Output of the air step routine.
+pub struct AirStepOut {
+    pub pos: Vec3,
+    /// Vertical velocity after ceiling checks.
+    pub vel_y: f32,
+    /// `Some` when a landing happened this frame.
+    pub floor: Option<FloorHit>,
+    /// Downward speed at the moment of landing.
+    pub fall_speed: f32,
+    pub wall_hit: bool,
+    pub wall_normal: Vec3,
+}
+
+/// Air step: move in quarter-steps; land when within the snap window below
+/// a floor (wiki:Movement steps@19723), zero upward velocity on ceilings
+/// within the ceiling window, push out of walls.
+pub fn step_air(
+    state: &CharacterState,
+    world: &dyn CollisionWorld,
+    params: &MovementParams,
+) -> AirStepOut {
+    let mut pos = state.pos;
+    let mut vy = state.vel.y;
+    let vx = state.vel.x;
+    let vz = state.vel.z;
+    let mut floor = None;
+    let mut fall_speed = 0.0;
+    let mut wall_hit = false;
+    let mut wall_normal = Vec3::ZERO;
+    for _ in 0..QUARTER_STEPS {
+        let mut proposed = pos + Vec3::new(vx * 0.25, vy * 0.25, vz * 0.25);
+        // Ceiling: within the window above and moving up -> stop rising.
+        // spec: step.ceiling_zero_vel_window (verified: wiki:Movement steps@19723)
+        if let Some(c) = world.find_ceiling(proposed, params.ceiling_zero_vel_window) {
+            if vy >= 0.0 {
+                vy = 0.0;
+            }
+            if proposed.y > c.y - 1.0 {
+                proposed.y = c.y - 1.0;
+            }
+        }
+        // Walls.
+        let wr = world.resolve_walls(proposed, params.height * 0.5, params.radius);
+        if wr.hit {
+            wall_hit = true;
+            wall_normal = wr.normal;
+            proposed = wr.pos;
+        }
+        // Landing: the highest floor at/below us must be within the snap
+        // window (78) below, and we must not be rising.
+        // spec: step.air_landing_snap_window (verified: wiki:Movement steps@19723)
+        if vy <= 0.0 {
+            if let Some(f) = world.find_floor(proposed, 0.0) {
+                if proposed.y - f.y <= params.air_landing_snap_window {
+                    fall_speed = -vy;
+                    pos = Vec3::new(proposed.x, f.y, proposed.z);
+                    floor = Some(f);
+                    vy = 0.0;
+                    break;
+                }
+            }
+        }
+        pos = proposed;
+    }
+    AirStepOut {
+        pos,
+        vel_y: vy,
+        floor,
+        fall_speed,
+        wall_hit,
+        wall_normal,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::actions::ActionRegistry;
+    use crate::input::RawInput;
+    use crate::surface::SurfaceWorld;
+
+    fn flat_world() -> SurfaceWorld {
+        let mut w = SurfaceWorld::new();
+        w.add_box(
+            Vec3::new(-2000.0, -100.0, -2000.0),
+            Vec3::new(2000.0, 0.0, 2000.0),
+            crate::world::SurfaceKind::Default,
+            0,
+        );
+        w
+    }
+
+    #[test]
+    fn idle_tick_stays_idle_without_input() {
+        let world = flat_world();
+        let registry = ActionRegistry::sm64_style();
+        let (out, _, events) = tick(
+            CharacterState::default(),
+            RawInput::default(),
+            &world,
+            &MovementParams::default(),
+            Timeline::default(),
+            &registry,
+            0,
+        );
+        assert_eq!(out.action, crate::state::ActionId::IDLE);
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn determinism_10k_frames() {
+        // Phase 2 gate: a scripted 10,000-frame scenario hashes identically
+        // across runs (CI also builds for aarch64).
+        let world = flat_world();
+        let registry = ActionRegistry::sm64_style();
+        let params = MovementParams::default();
+        let run = || {
+            let mut state = CharacterState::default();
+            let mut timeline = Timeline::default();
+            let mut prev_buttons = 0u16;
+            for frame in 0..10_000u32 {
+                let stick_y = if frame < 5000 { 80 } else { 0 };
+                let input = RawInput {
+                    stick_x: 0,
+                    stick_y,
+                    buttons: 0,
+                    cam_yaw: crate::angles::Angle::ZERO,
+                };
+                let (s, t, _) = tick(
+                    state,
+                    input,
+                    &world,
+                    &params,
+                    timeline,
+                    &registry,
+                    prev_buttons,
+                );
+                state = s;
+                timeline = t;
+                prev_buttons = input.buttons;
+            }
+            state.hash_state()
+        };
+        let h1 = run();
+        let h2 = run();
+        assert_eq!(h1, h2);
+        assert_ne!(h1, CharacterState::default().hash_state());
+    }
+}

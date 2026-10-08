@@ -4,6 +4,10 @@
 //! Actions without a community page (Braking, Decelerating, Landing) use
 //! provisional IDs and clearly-marked working assumptions.
 
+use super::air::{
+    enter_backflip, enter_dive, enter_double_jump, enter_jump, enter_long_jump, enter_side_flip,
+    enter_triple_jump,
+};
 use super::{ActionCx, ActionHandler, ActionResult};
 use crate::angles::Angle;
 use crate::events::Event;
@@ -20,11 +24,19 @@ pub mod slot {
     pub const BRAKE: u32 = 3;
     pub const DECEL: u32 = 4;
     pub const LAND: u32 = 5;
+    pub const CROUCH: u32 = 15;
+    pub const CRAWL: u32 = 16;
+    pub const BUTT_SLIDE: u32 = 19;
 }
 
 /// Shared ground-tick prelude: refresh the floor query. Returns `Some(result)`
 /// when the action must yield (walked off the floor).
 fn ground_prelude(cx: &mut ActionCx) -> Option<ActionResult> {
+    // Water plunge: more than 100 below the surface.
+    // (verified: wiki:Water Plunge, rev 2023-07-27)
+    if let Some(wl) = crate::actions::water::water_plunge_surface(cx) {
+        return Some(crate::actions::water::enter_water_plunge(cx, wl));
+    }
     let floor = cx.world.find_floor(cx.state.pos, 1.0);
     match floor {
         Some(f) => {
@@ -44,7 +56,7 @@ fn ground_prelude(cx: &mut ActionCx) -> Option<ActionResult> {
     }
 }
 
-fn surface_kind_index(kind: SurfaceKind) -> u8 {
+pub(crate) fn surface_kind_index(kind: SurfaceKind) -> u8 {
     match kind {
         SurfaceKind::Default => 0,
         SurfaceKind::Slide => 1,
@@ -117,7 +129,11 @@ impl ActionHandler for Idle {
         }
         // Cancel checks.
         if cx.pressed(buttons::A, prev_buttons) {
-            return super::air::enter_jump(cx);
+            return enter_jump(cx);
+        }
+        // Crouch: Z held. (wiki:Crouching@17805)
+        if cx.pressed(buttons::Z, prev_buttons) {
+            return enter_crouch(cx);
         }
         if cx.input.stick_held() {
             return enter_walking(cx);
@@ -144,10 +160,31 @@ impl ActionHandler for Walking {
         }
         let p = cx.params;
         // --- Cancel checks (documented order). ---
-        if cx.pressed(buttons::A, prev_buttons) {
-            return super::air::enter_jump(cx);
+        // Long jump: A + Z while moving fast (entry threshold (verify)).
+        if cx.pressed(buttons::A, prev_buttons)
+            && cx.input.buttons & buttons::Z != 0
+            && cx.state.forward_speed >= 16.0
+        {
+            return enter_long_jump(cx);
         }
-        // B dive: phase 4 (needs dive action); noted, not implemented.
+        if cx.pressed(buttons::A, prev_buttons) {
+            return enter_jump(cx);
+        }
+        // Dive: B with speed >= 29 and stick mag > 48. (wiki:Dive@19303)
+        if cx.pressed(buttons::B, prev_buttons)
+            && cx.state.forward_speed >= 29.0
+            && cx.intended_magnitude() > 48.0
+        {
+            return enter_dive(cx, true);
+        }
+        // Crouch: Z held. (wiki:Crouching@17805)
+        if cx.pressed(buttons::Z, prev_buttons) {
+            return enter_crouch(cx);
+        }
+        // Slide: steep/slippery floor kind -> butt slide.
+        if let Some(r) = check_slide(cx) {
+            return r;
+        }
         let intended = cx.intended_yaw();
         let mag = cx.intended_magnitude();
         let speed = cx.state.forward_speed;
@@ -214,8 +251,12 @@ impl ActionHandler for TurningAround {
         if let Some(r) = ground_prelude(cx) {
             return r;
         }
+        // A during TurningAround -> side flip. (wiki:Side Flip@20374)
         if cx.pressed(buttons::A, prev_buttons) {
-            return super::air::enter_jump(cx);
+            return enter_side_flip(cx);
+        }
+        if cx.pressed(buttons::Z, prev_buttons) {
+            return enter_crouch(cx);
         }
         let speed = cx.state.forward_speed;
         if !cx.input.stick_held() {
@@ -257,8 +298,29 @@ impl ActionHandler for Braking {
         if let Some(r) = ground_prelude(cx) {
             return r;
         }
+        if let Some(r) = check_slide(cx) {
+            return r;
+        }
+        // Long jump: A + Z while moving fast (entry threshold (verify)).
+        if cx.pressed(buttons::A, prev_buttons)
+            && cx.input.buttons & buttons::Z != 0
+            && cx.state.forward_speed >= 16.0
+        {
+            return enter_long_jump(cx);
+        }
         if cx.pressed(buttons::A, prev_buttons) {
-            return super::air::enter_jump(cx);
+            return enter_jump(cx);
+        }
+        // Dive: B with speed >= 29 and stick mag > 48. (wiki:Dive@19303)
+        if cx.pressed(buttons::B, prev_buttons)
+            && cx.state.forward_speed >= 29.0
+            && cx.intended_magnitude() > 48.0
+        {
+            return enter_dive(cx, true);
+        }
+        // Crouch: Z held. (wiki:Crouching@17805)
+        if cx.pressed(buttons::Z, prev_buttons) {
+            return enter_crouch(cx);
         }
         if cx.input.stick_held() {
             return enter_walking(cx);
@@ -287,8 +349,29 @@ impl ActionHandler for Decelerating {
         if let Some(r) = ground_prelude(cx) {
             return r;
         }
+        if let Some(r) = check_slide(cx) {
+            return r;
+        }
+        // Long jump: A + Z while moving fast (entry threshold (verify)).
+        if cx.pressed(buttons::A, prev_buttons)
+            && cx.input.buttons & buttons::Z != 0
+            && cx.state.forward_speed >= 16.0
+        {
+            return enter_long_jump(cx);
+        }
         if cx.pressed(buttons::A, prev_buttons) {
-            return super::air::enter_jump(cx);
+            return enter_jump(cx);
+        }
+        // Dive: B with speed >= 29 and stick mag > 48. (wiki:Dive@19303)
+        if cx.pressed(buttons::B, prev_buttons)
+            && cx.state.forward_speed >= 29.0
+            && cx.intended_magnitude() > 48.0
+        {
+            return enter_dive(cx, true);
+        }
+        // Crouch: Z held. (wiki:Crouching@17805)
+        if cx.pressed(buttons::Z, prev_buttons) {
+            return enter_crouch(cx);
         }
         if cx.input.stick_held() {
             return enter_walking(cx);
@@ -318,24 +401,183 @@ impl ActionHandler for Landing {
         if let Some(r) = ground_prelude(cx) {
             return r;
         }
+        // Jump chaining: single/sideflip/freefall land -> double jump,
+        // double jump land with speed > 20 -> triple jump, else single jump.
+        // (wiki:Double Jump@18964, wiki:Triple Jump@19300)
         if cx.pressed(buttons::A, prev_buttons) {
-            return super::air::enter_jump(cx);
+            return match cx.state.land_from {
+                ActionId::JUMP | ActionId::SIDE_FLIP | ActionId::FREEFALL => enter_double_jump(cx),
+                ActionId::DOUBLE_JUMP if cx.state.forward_speed > 20.0 => enter_triple_jump(cx),
+                _ => enter_jump(cx),
+            };
         }
         const DURATION: u32 = 4;
-        // Scrub remaining speed quickly (verify rate).
-        cx.state.forward_speed *= 0.5;
-        if cx.state.forward_speed < 0.5 {
-            cx.state.forward_speed = 0.0;
-        }
+        // Forward speed is preserved through the landing (the triple jump
+        // chain needs speed > 20 after a double-jump land); the exact
+        // recovery behavior is (verify).
         apply_ground_move(cx);
         if cx.state.action_timer >= DURATION {
+            if cx.input.stick_held() {
+                return enter_walking(cx);
+            }
+            // No stick: roll into a decel rather than stopping dead.
+            cx.timeline.slot = slot::DECEL;
+            return cx.goto(ActionId::DECELERATING, 0);
+        }
+        cx.timeline.slot = slot::LAND;
+        ActionResult::Stay
+    }
+}
+
+/// Crouch entry. (wiki:Crouching@17805)
+fn enter_crouch(cx: &mut ActionCx) -> ActionResult {
+    cx.state.forward_speed = 0.0;
+    cx.timeline.slot = slot::CROUCH;
+    cx.goto(ActionId::CROUCH, 0)
+}
+
+/// Crouching: Z held on the ground. A -> backflip, Z released -> stand,
+/// stick -> crawl. (wiki:Crouching@17805)
+pub struct Crouch;
+impl ActionHandler for Crouch {
+    fn name(&self) -> &'static str {
+        "Crouch"
+    }
+    fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
+        if let Some(r) = ground_prelude(cx) {
+            return r;
+        }
+        if cx.pressed(buttons::A, prev_buttons) {
+            return enter_backflip(cx);
+        }
+        // Z released -> stop crouching.
+        if cx.input.buttons & buttons::Z == 0 {
+            if cx.intended_yaw().is_some() {
+                return enter_walking(cx);
+            }
+            return cx.goto(ActionId::IDLE, 0);
+        }
+        // Stick held -> crawl.
+        if cx.intended_yaw().is_some() {
+            cx.timeline.slot = slot::CRAWL;
+            return cx.goto(ActionId::CRAWL, 0);
+        }
+        cx.timeline.slot = slot::CROUCH;
+        ActionResult::Stay
+    }
+}
+
+/// Crawling: slow ground movement. Numbers are (verify).
+pub struct Crawl;
+impl ActionHandler for Crawl {
+    fn name(&self) -> &'static str {
+        "Crawl"
+    }
+    fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
+        if let Some(r) = ground_prelude(cx) {
+            return r;
+        }
+        if cx.input.buttons & buttons::Z == 0 {
+            return cx.goto(ActionId::IDLE, 0);
+        }
+        if cx.pressed(buttons::A, prev_buttons) {
+            return enter_jump(cx); // (verify)
+        }
+        let Some(intended) = cx.intended_yaw() else {
+            cx.timeline.slot = slot::CROUCH;
+            return cx.goto(ActionId::CROUCH, 0);
+        };
+        // spec: crawl.target_speed / crawl.accel (verify)
+        let target = cx.intended_magnitude().min(10.0);
+        let speed = cx.state.forward_speed;
+        cx.state.forward_speed = if speed < target {
+            (speed + 2.0).min(target)
+        } else {
+            (speed - 2.0).max(target)
+        };
+        cx.state.face_yaw = cx.state.face_yaw.approach(intended, 0x800);
+        apply_ground_move(cx);
+        cx.timeline.slot = slot::CRAWL;
+        ActionResult::Stay
+    }
+}
+
+/// Slide check for ground actions: Slide-kind floor -> butt slide.
+fn check_slide(cx: &mut ActionCx) -> Option<ActionResult> {
+    if cx
+        .world
+        .find_floor(cx.state.pos, 1.0)
+        .is_some_and(|f| f.kind == SurfaceKind::Slide)
+    {
+        return Some(enter_butt_slide(cx));
+    }
+    None
+}
+
+/// Butt slide entry: keep speed and facing.
+fn enter_butt_slide(cx: &mut ActionCx) -> ActionResult {
+    cx.timeline.slot = slot::BUTT_SLIDE;
+    cx.goto(ActionId::BUTT_SLIDE, 0)
+}
+
+/// Butt slide: sliding on steep/slippery ground. All numbers are (verify).
+pub struct ButtSlide;
+impl ActionHandler for ButtSlide {
+    fn name(&self) -> &'static str {
+        "ButtSlide"
+    }
+    fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
+        if let Some(r) = ground_prelude(cx) {
+            return r;
+        }
+        if cx.pressed(buttons::A, prev_buttons) {
+            return enter_jump(cx); // (verify)
+        }
+        let floor = cx.world.find_floor(cx.state.pos, 1.0);
+        let on_slide = floor.is_some_and(|f| f.kind == SurfaceKind::Slide);
+        if !on_slide {
+            // Left the slide: walk or decel out.
+            if cx.input.stick_held() {
+                return enter_walking(cx);
+            }
+            cx.timeline.slot = slot::DECEL;
+            return cx.goto(ActionId::DECELERATING, 0);
+        }
+        let n = floor.unwrap().normal;
+        let steep = (1.0 - n.y).max(0.0);
+        // Downhill direction (xz).
+        let mut dh = (-n.x, -n.z);
+        let dh_len = (dh.0 * dh.0 + dh.1 * dh.1).sqrt();
+        if dh_len > 1e-4 {
+            dh.0 /= dh_len;
+            dh.1 /= dh_len;
+        }
+        let (fx, fz) = cx.forward_xz();
+        let along = fx * dh.0 + fz * dh.1;
+        // spec: slide.downhill_accel / slide.friction (verify)
+        if steep > 0.02 {
+            cx.state.forward_speed +=
+                cx.params.slide_downhill_accel * steep * along.signum().max(0.2);
+        } else {
+            cx.state.forward_speed = (cx.state.forward_speed - 1.0).max(0.0);
+        }
+        cx.state.forward_speed = cx.state.forward_speed.min(48.0);
+        // Limited steering while sliding (verify rate).
+        if let Some(iy) = cx.intended_yaw() {
+            cx.state.face_yaw = cx.state.face_yaw.approach(iy, 0x400);
+        } else if dh_len > 1e-4 {
+            let dh_yaw = crate::trig::atan2(dh.0, dh.1);
+            cx.state.face_yaw = cx.state.face_yaw.approach(dh_yaw, 0x400);
+        }
+        if cx.state.forward_speed < 2.0 {
             if cx.input.stick_held() {
                 return enter_walking(cx);
             }
             cx.timeline.slot = slot::IDLE;
             return cx.goto(ActionId::IDLE, 0);
         }
-        cx.timeline.slot = slot::LAND;
+        apply_ground_move(cx);
+        cx.timeline.slot = slot::BUTT_SLIDE;
         ActionResult::Stay
     }
 }

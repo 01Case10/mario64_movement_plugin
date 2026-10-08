@@ -1,0 +1,15 @@
+[package]
+name = "stepkit-godot"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Godot 4.7+ GDExtension binding: nodes, resources, collision adapter, input sources."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+stepkit-core = { workspace = true }
+glam = { workspace = true }
+stepkit-anim = { workspace = true }
+godot = { workspace = true }

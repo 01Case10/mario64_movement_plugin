@@ -64,6 +64,24 @@ impl ActionId {
     /// Ledge grab.
     /// spec: actions.ledge_grab (verified: wiki:Ledge Grab@19518)
     pub const LEDGE_GRAB: ActionId = ActionId(0x0800034B);
+    /// Crouching (Z held on the ground).
+    /// spec: actions.crouch (PROVISIONAL)
+    pub const CROUCH: ActionId = ActionId(0x40000010);
+    /// Crawling (stick held while crouching).
+    /// spec: actions.crawl (PROVISIONAL)
+    pub const CRAWL: ActionId = ActionId(0x40000011);
+    /// Ground pound.
+    /// spec: actions.ground_pound (PROVISIONAL -- no community page)
+    pub const GROUND_POUND: ActionId = ActionId(0x400008A8);
+    /// Wall kick.
+    /// spec: actions.wall_kick (verified: wiki:Wall Kick rev 19311)
+    pub const WALL_KICK: ActionId = ActionId(0x018808B0);
+    /// Backwards air knockback (bonk).
+    /// spec: actions.air_knockback (PROVISIONAL)
+    pub const AIR_KNOCKBACK: ActionId = ActionId(0x400008B1);
+    /// Butt slide.
+    /// spec: actions.butt_slide (PROVISIONAL)
+    pub const BUTT_SLIDE: ActionId = ActionId(0x40000447);
 
     /// Custom action IDs start here; the registry enforces the range.
     pub const CUSTOM_BASE: u32 = 0x0100_0000;
@@ -115,6 +133,10 @@ pub struct CharacterState {
     pub wall_hit: bool,
     /// Wall-kick window timer (frames remaining).
     pub wall_kick_timer: u32,
+    /// Normal of the last wall hit (points away from the wall).
+    pub wall_normal: Vec3,
+    /// The air action the last landing came from (for jump chaining).
+    pub land_from: ActionId,
     /// Gravity direction. Fixed to +Y in v1 (see open decision 7); stored so
     /// planetary gravity can be added later without rewriting every action.
     pub up: Vec3,
@@ -141,6 +163,8 @@ impl Default for CharacterState {
             floor_kind: 0,
             wall_hit: false,
             wall_kick_timer: 0,
+            wall_normal: Vec3::X,
+            land_from: ActionId::IDLE,
             up: Vec3::Y,
             warped: false,
         }
@@ -172,6 +196,9 @@ impl CharacterState {
         self.floor_kind.hash(&mut h);
         self.wall_hit.hash(&mut h);
         self.wall_kick_timer.hash(&mut h);
+        self.wall_normal.x.to_bits().hash(&mut h);
+        self.wall_normal.z.to_bits().hash(&mut h);
+        self.land_from.0.hash(&mut h);
         h.finish()
     }
 }

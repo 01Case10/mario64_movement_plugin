@@ -6,7 +6,7 @@
 
 use crate::trace::TraceFrame;
 
-const MAGIC: &[u8; 8] = b"STPKTRC\x01";
+const MAGIC: &[u8; 8] = b"STPKTRC\x03"; // v3: added wall_kick_timer, wall_normal_yaw
 
 /// Pack frames into the binary format.
 pub fn pack_frames(frames: &[TraceFrame]) -> Vec<u8> {
@@ -38,6 +38,7 @@ pub fn pack_frames(frames: &[TraceFrame]) -> Vec<u8> {
         for v in [
             f.action,
             f.prev_action,
+            f.land_from,
             f.action_state,
             f.action_timer,
             f.action_arg,
@@ -45,6 +46,8 @@ pub fn pack_frames(frames: &[TraceFrame]) -> Vec<u8> {
             out.extend_from_slice(&v.to_le_bytes());
         }
         out.push(f.wall_hit);
+        out.extend_from_slice(&f.wall_kick_timer.to_le_bytes());
+        out.extend_from_slice(&f.wall_normal_yaw.to_le_bytes());
         let slot = f.anim_slot.as_bytes();
         out.push(slot.len().min(255) as u8);
         out.extend_from_slice(&slot[..slot.len().min(255)]);
@@ -103,11 +106,14 @@ pub fn unpack_frames(data: &[u8]) -> Option<Vec<TraceFrame>> {
         let face_roll = read_i16(data, &mut pos)?;
         let action = read_u32(data, &mut pos)?;
         let prev_action = read_u32(data, &mut pos)?;
+        let land_from = read_u32(data, &mut pos)?;
         let action_state = read_u32(data, &mut pos)?;
         let action_timer = read_u32(data, &mut pos)?;
         let action_arg = read_u32(data, &mut pos)?;
         let wall_hit = *data.get(pos)?;
         pos += 1;
+        let wall_kick_timer = read_u32(data, &mut pos)?;
+        let wall_normal_yaw = read_i16(data, &mut pos)?;
         let slot_len = *data.get(pos)? as usize;
         pos += 1;
         let slot = core::str::from_utf8(data.get(pos..pos + slot_len)?)
@@ -133,12 +139,15 @@ pub fn unpack_frames(data: &[u8]) -> Option<Vec<TraceFrame>> {
             face_roll,
             action,
             prev_action,
+            land_from,
             action_state,
             action_timer,
             action_arg,
             floor_y,
             ceil_y,
             wall_hit,
+            wall_kick_timer,
+            wall_normal_yaw,
             anim_slot: slot,
             anim_frame,
         });
@@ -169,12 +178,15 @@ mod tests {
             face_roll: 0,
             action: 0x04000440,
             prev_action: 0x0C400201,
+            land_from: 0x0C400201,
             action_state: 2,
             action_timer: 17,
             action_arg: 0,
             floor_y: 0.0,
             ceil_y: 1000.0,
-            wall_hit: 1,
+            wall_hit: 0,
+            wall_kick_timer: 0,
+            wall_normal_yaw: 0,
             anim_slot: "walk_cycle".into(),
             anim_frame: 9,
         }
