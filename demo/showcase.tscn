@@ -1,11 +1,27 @@
-[gd_scene load_steps=14 format=3 uid="uid://stepkitshowcase"]
+[gd_scene load_steps=25 format=3 uid="uid://stepkitshowcase"]
 
 [ext_resource type="Script" path="res://showcase.gd" id="1"]
 [ext_resource type="Mesh" path="res://player_mesh.tres" id="2"]
 [ext_resource type="PackedScene" path="res://stepbot.tscn" id="3"]
 
-[sub_resource type="BoxMesh" id="floor"]
-size = Vector3(60, 1, 60)
+[sub_resource type="Environment" id="env"]
+background_mode = 1
+background_color = Color(0.35, 0.38, 0.42, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.65, 0.65, 0.7, 1)
+ambient_light_energy = 0.7
+
+[sub_resource type="BoxMesh" id="floor_w"]
+size = Vector3(13, 1, 60)
+
+[sub_resource type="BoxMesh" id="floor_e"]
+size = Vector3(37, 1, 60)
+
+[sub_resource type="BoxMesh" id="floor_n"]
+size = Vector3(10, 1, 15)
+
+[sub_resource type="BoxMesh" id="floor_s"]
+size = Vector3(10, 1, 35)
 
 [sub_resource type="BoxMesh" id="wall"]
 size = Vector3(6, 6, 1)
@@ -16,14 +32,41 @@ size = Vector3(6, 0.5, 3)
 [sub_resource type="BoxMesh" id="pool_floor"]
 size = Vector3(10, 1, 10)
 
+[sub_resource type="BoxMesh" id="ramp_vis"]
+size = Vector3(4.28, 0.2, 3)
+
+[sub_resource type="BoxMesh" id="quicksand_vis"]
+size = Vector3(4, 0.06, 4)
+
 [sub_resource type="PlaneMesh" id="water_plane"]
 size = Vector2(10, 10)
+
+[sub_resource type="BoxShape3D" id="col_ground_w"]
+size = Vector3(13, 1, 60)
+
+[sub_resource type="BoxShape3D" id="col_ground_e"]
+size = Vector3(37, 1, 60)
+
+[sub_resource type="BoxShape3D" id="col_ground_n"]
+size = Vector3(10, 1, 15)
+
+[sub_resource type="BoxShape3D" id="col_ground_s"]
+size = Vector3(10, 1, 35)
+
+[sub_resource type="BoxShape3D" id="col_wall"]
+size = Vector3(6, 6, 1)
+
+[sub_resource type="BoxShape3D" id="col_ledge"]
+size = Vector3(6, 0.5, 3)
 
 [sub_resource type="StandardMaterial3D" id="ground_mat"]
 albedo_color = Color(0.25, 0.45, 0.3, 1)
 
 [sub_resource type="StandardMaterial3D" id="wall_mat"]
 albedo_color = Color(0.6, 0.35, 0.25, 1)
+
+[sub_resource type="StandardMaterial3D" id="sand_mat"]
+albedo_color = Color(0.76, 0.66, 0.42, 1)
 
 [sub_resource type="StandardMaterial3D" id="water_mat"]
 albedo_color = Color(0.2, 0.4, 0.8, 0.7)
@@ -39,15 +82,39 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.1, 0)
 
 [node name="StepBot" parent="Player" instance=ExtResource("3")]
 
-[node name="Camera3D" type="Camera3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 0.9, 0.44, 0, -0.44, 0.9, 0, 5, 8)
+[node name="CameraRig" type="Node3D" parent="."]
+
+[node name="SpringArm3D" type="SpringArm3D" parent="CameraRig"]
+spring_length = 9.0
+margin = 0.5
+
+[node name="Camera3D" type="Camera3D" parent="CameraRig/SpringArm3D"]
+current = true
 
 [node name="Sun" type="DirectionalLight3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 0.7, 0.7, 0, -0.7, 0.7, 0, 10, 0)
 
-[node name="FloorMesh" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
-mesh = SubResource("floor")
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("env")
+
+[node name="FloorW" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -23.5, -0.5, 0)
+mesh = SubResource("floor_w")
+surface_material_override/0 = SubResource("ground_mat")
+
+[node name="FloorE" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 11.5, -0.5, 0)
+mesh = SubResource("floor_e")
+surface_material_override/0 = SubResource("ground_mat")
+
+[node name="FloorN" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, -0.5, -22.5)
+mesh = SubResource("floor_n")
+surface_material_override/0 = SubResource("ground_mat")
+
+[node name="FloorS" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, -0.5, 12.5)
+mesh = SubResource("floor_s")
 surface_material_override/0 = SubResource("ground_mat")
 
 [node name="WallMesh" type="MeshInstance3D" parent="."]
@@ -60,6 +127,16 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 2.5, 10)
 mesh = SubResource("ledge")
 surface_material_override/0 = SubResource("wall_mat")
 
+[node name="RampMesh" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.9364, 0.3509, 0, -0.3509, 0.9364, 0, 0, 0, 1, -8, 0.75, -2)
+mesh = SubResource("ramp_vis")
+surface_material_override/0 = SubResource("wall_mat")
+
+[node name="QuicksandMesh" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.03, -8)
+mesh = SubResource("quicksand_vis")
+surface_material_override/0 = SubResource("sand_mat")
+
 [node name="PoolFloorMesh" type="MeshInstance3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, -3.5, -10)
 mesh = SubResource("pool_floor")
@@ -70,18 +147,54 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0, -10)
 mesh = SubResource("water_plane")
 surface_material_override/0 = SubResource("water_mat")
 
+[node name="GroundColliderW" type="StaticBody3D" parent="."]
+
+[node name="GroundShapeW" type="CollisionShape3D" parent="GroundColliderW"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -23.5, -0.5, 0)
+shape = SubResource("col_ground_w")
+
+[node name="GroundColliderE" type="StaticBody3D" parent="."]
+
+[node name="GroundShapeE" type="CollisionShape3D" parent="GroundColliderE"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 11.5, -0.5, 0)
+shape = SubResource("col_ground_e")
+
+[node name="GroundColliderN" type="StaticBody3D" parent="."]
+
+[node name="GroundShapeN" type="CollisionShape3D" parent="GroundColliderN"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, -0.5, -22.5)
+shape = SubResource("col_ground_n")
+
+[node name="GroundColliderS" type="StaticBody3D" parent="."]
+
+[node name="GroundShapeS" type="CollisionShape3D" parent="GroundColliderS"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, -0.5, 12.5)
+shape = SubResource("col_ground_s")
+
+[node name="WallCollider" type="StaticBody3D" parent="."]
+
+[node name="WallShape" type="CollisionShape3D" parent="WallCollider"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3, 15)
+shape = SubResource("col_wall")
+
+[node name="LedgeCollider" type="StaticBody3D" parent="."]
+
+[node name="LedgeShape" type="CollisionShape3D" parent="LedgeCollider"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 2.5, 10)
+shape = SubResource("col_ledge")
+
 [node name="HUD" type="CanvasLayer" parent="."]
 
 [node name="ActionLabel" type="Label" parent="HUD"]
 offset_left = 20
 offset_top = 20
-offset_right = 600
+offset_right = 700
 offset_bottom = 60
 theme_override_font_sizes/font_size = 36
 
 [node name="SegmentLabel" type="Label" parent="HUD"]
 offset_left = 20
 offset_top = 65
-offset_right = 600
+offset_right = 700
 offset_bottom = 100
 theme_override_font_sizes/font_size = 24

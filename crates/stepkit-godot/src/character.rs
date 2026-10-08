@@ -11,6 +11,7 @@ use stepkit_core::events::Event;
 use stepkit_core::input::RawInput;
 use stepkit_core::params::MovementParams;
 use stepkit_core::state::CharacterState;
+use stepkit_core::state::ActionId;
 use stepkit_core::step::{tick, Timeline};
 use stepkit_core::surface::SurfaceWorld;
 
@@ -123,15 +124,38 @@ impl StepChar3D {
     }
 
     /// Teleport the character (resets interpolation).
+    ///
+    /// This is a full reset: position, velocity, action, speeds, and timers
+    /// are all cleared so a teleport never leaks the previous action into
+    /// the new location (important for choreographed demos).
     #[func]
     pub fn teleport(&mut self, pos: Vector3) {
         let s = 1.0 / self.unit_scale.max(1e-6);
         self.state.pos = glam::Vec3::new(pos.x * s, pos.y * s, pos.z * s);
         self.state.vel = glam::Vec3::ZERO;
+        let old = self.state.action;
+        self.state.forward_speed = 0.0;
+        self.state.slide_vel_x = 0.0;
+        self.state.slide_vel_z = 0.0;
+        self.state.action = ActionId::IDLE;
+        self.state.prev_action = ActionId::IDLE;
+        self.state.action_state = 0;
+        self.state.action_timer = 0;
+        self.state.action_arg = 0;
+        self.state.wall_kick_timer = 0;
+        self.state.quicksand_depth = 0.0;
+        self.state.squish_timer = 0;
+        self.state.swim_strength = 160;
         let v = Vector3::new(pos.x, pos.y, pos.z);
         self.render_prev_pos = v;
         self.render_cur_pos = v;
         self.accumulator = 0.0;
+        if old != ActionId::IDLE {
+            self.base_mut().emit_signal(
+                "action_changed",
+                &[ActionId::IDLE.0.to_variant(), old.0.to_variant()],
+            );
+        }
     }
 
     /// (Re)bake the collision world from `world_node` and params from
