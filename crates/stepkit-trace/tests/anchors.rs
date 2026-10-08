@@ -2411,7 +2411,7 @@ fn anchor_water_jump_entry() {
         ActionId::WATER_JUMP,
         "near-surface A -> water jump"
     );
-    assert!((st.vel.y - 62.0).abs() < 1e-3, "vy 62: {}", st.vel.y);
+    assert!((st.vel.y - 42.0).abs() < 1e-3, "vy 42 (decomp): {}", st.vel.y);
     assert!(
         (st.forward_speed - 15.0).abs() < 1e-3,
         "forward min 15: {}",
