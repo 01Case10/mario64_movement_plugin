@@ -80,7 +80,9 @@ def main():
                         "BUTT_SLIDE", "WATER_PLUNGE", "SWIMMING",
                         "SLIDE_KICK", "ROLLOUT", "STEEP_JUMP", "AIR_HIT_WALL",
                         "SOFT_BONK", "DIVE_SLIDE", "CROUCH_SLIDE",
-                        "STOMACH_SLIDE", "SLIDE_KICK_SLIDE", "FINISH_TURN"):
+                        "STOMACH_SLIDE", "SLIDE_KICK_SLIDE", "FINISH_TURN",
+                        "PUNCH", "MOVE_PUNCH", "GROUND_KB", "GROUND_BONK",
+                        "JUMP_KICK"):
                 continue  # structural (anim slot ids, angle units) or button bits
             window = "\n".join(lines[max(0, i - 4):i])
             sm = specref_re.search(window)

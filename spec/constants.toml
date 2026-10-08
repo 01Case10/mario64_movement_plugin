@@ -1191,3 +1191,228 @@ evidence = []
 confidence = "high"
 reviewed_by = "unreviewed"
 date = "2026-10-08"
+
+[actions.punching]
+value = "0x00800380"
+unit = "action id"
+source = { kind = "decomp", note = "decomp action index; approved 2026-10-08" }
+evidence = ["scenario:punch_combo"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[actions.move_punching]
+value = "0x00800457"
+unit = "action id"
+source = { kind = "decomp", note = "decomp action index; approved 2026-10-08" }
+evidence = ["scenario:punch_combo"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[actions.jump_kick]
+value = "0x018008AC"
+unit = "action id"
+source = { kind = "decomp", note = "decomp action index; approved 2026-10-08" }
+evidence = ["scenario:jump_kick"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[actions.backward_ground_kb]
+value = "0x00020462"
+unit = "action id"
+source = { kind = "decomp", note = "decomp action index; approved 2026-10-08" }
+evidence = []
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[actions.forward_ground_kb]
+value = "0x00020463"
+unit = "action id"
+source = { kind = "decomp", note = "decomp action index; approved 2026-10-08" }
+evidence = []
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[actions.hard_backward_ground_kb]
+value = "0x00020460"
+unit = "action id"
+source = { kind = "decomp", note = "decomp action index; approved 2026-10-08" }
+evidence = []
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[actions.hard_forward_ground_kb]
+value = "0x00020461"
+unit = "action id"
+source = { kind = "decomp", note = "decomp action index; approved 2026-10-08" }
+evidence = []
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[actions.soft_backward_ground_kb]
+value = "0x00020464"
+unit = "action id"
+source = { kind = "decomp", note = "decomp action index; approved 2026-10-08" }
+evidence = []
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[actions.soft_forward_ground_kb]
+value = "0x00020465"
+unit = "action id"
+source = { kind = "decomp", note = "decomp action index; approved 2026-10-08" }
+evidence = []
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[actions.ground_bonk]
+value = "0x00020466"
+unit = "action id"
+source = { kind = "decomp", note = "decomp action index; approved 2026-10-08" }
+evidence = ["scenario:ground_bonk"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[combat.punch_stage1_frames]
+value = 8
+unit = "frames"
+source = { kind = "decomp", note = "decomp-derived punch combo timing; approved 2026-10-08" }
+evidence = ["scenario:punch_combo"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[combat.punch_stage2_frames]
+value = 8
+unit = "frames"
+source = { kind = "decomp", note = "decomp-derived punch combo timing; approved 2026-10-08" }
+evidence = ["scenario:punch_combo"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[combat.punch_stage3_frames]
+value = 12
+unit = "frames"
+source = { kind = "decomp", note = "decomp-derived punch combo timing; approved 2026-10-08" }
+evidence = ["scenario:punch_combo"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[combat.punch_decel]
+value = 0.5
+unit = "units per frame^2"
+source = { kind = "decomp", note = "decomp-derived: slope decel 0.5 while punching; approved 2026-10-08" }
+evidence = ["scenario:punch_combo"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[combat.jump_kick_vy]
+value = 20.0
+unit = "units per frame"
+source = { kind = "decomp", note = "decomp-derived jump kick entry; approved 2026-10-08" }
+evidence = ["scenario:jump_kick"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[combat.jump_kick_speed_threshold]
+value = 28.0
+unit = "units per frame"
+source = { kind = "decomp", note = "decomp-derived: B in air at speed <= 28 kick, above dives; approved 2026-10-08" }
+evidence = ["scenario:jump_kick"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[knockback.ground_decel]
+value = 0.9
+unit = "units per frame^2"
+source = { kind = "decomp", note = "decomp-derived: landing accel 0.9 in the shared ground-knockback step; approved 2026-10-08" }
+evidence = []
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[knockback.entry_speed_clamp]
+value = 32.0
+unit = "units per frame"
+source = { kind = "decomp", note = "decomp-derived: knockback entry speeds clamp to +/-32; approved 2026-10-08" }
+evidence = []
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[knockback.bonk_speed_threshold]
+value = 16.0
+unit = "units per frame"
+source = { kind = "decomp", note = "decomp-derived: slide_bonk fast/slow split at speed 16; approved 2026-10-08" }
+evidence = ["scenario:ground_bonk"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[knockback.backward_ground_frames]
+value = 22
+unit = "frames"
+source = { kind = "decomp", note = "decomp-derived ground knockback decel window; approved 2026-10-08" }
+evidence = []
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[knockback.forward_ground_frames]
+value = 20
+unit = "frames"
+source = { kind = "decomp", note = "decomp-derived ground knockback decel window; approved 2026-10-08" }
+evidence = []
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[knockback.hard_backward_ground_frames]
+value = 43
+unit = "frames"
+source = { kind = "decomp", note = "decomp-derived ground knockback decel window; approved 2026-10-08" }
+evidence = []
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[knockback.hard_forward_ground_frames]
+value = 21
+unit = "frames"
+source = { kind = "decomp", note = "decomp-derived ground knockback decel window; approved 2026-10-08" }
+evidence = []
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[knockback.soft_ground_frames]
+value = 100
+unit = "frames"
+source = { kind = "decomp", note = "decomp-derived ground knockback decel window; approved 2026-10-08" }
+evidence = []
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[knockback.ground_bonk_frames]
+value = 32
+unit = "frames"
+source = { kind = "decomp", note = "decomp-derived ground bonk decel window; approved 2026-10-08" }
+evidence = ["scenario:ground_bonk"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
