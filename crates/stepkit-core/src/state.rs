@@ -288,6 +288,18 @@ pub struct CharacterState {
     pub up: Vec3,
     /// Set by warps so the renderer skips interpolation across the jump.
     pub warped: bool,
+    /// IK hand targets (world-space, sim units). Set during ledge-grab
+    /// actions so a renderer can solve arm IK; `None` in all other actions.
+    /// Output-only: never read by simulation logic, never hashed.
+    pub ik_hand_l: Option<Vec3>,
+    /// IK hand targets (world-space, sim units). Set during ledge-grab
+    /// actions so a renderer can solve arm IK; `None` in all other actions.
+    /// Output-only: never read by simulation logic, never hashed.
+    pub ik_hand_r: Option<Vec3>,
+    /// Grabbed ledge edge point (world-space, sim units), recorded by
+    /// `try_ledge_grab`. Feeds `ik_hand_l`/`ik_hand_r`.
+    /// Output-only: never read by simulation logic, never hashed.
+    pub grab_point: Option<Vec3>,
 }
 
 impl Default for CharacterState {
@@ -322,6 +334,9 @@ impl Default for CharacterState {
             swim_strength: 160, // spec: swim.strength_default
             up: Vec3::Y,
             warped: false,
+            ik_hand_l: None,
+            ik_hand_r: None,
+            grab_point: None,
         }
     }
 }

@@ -71,7 +71,39 @@ pub fn tick(
     } else {
         cx.timeline.frame = cx.timeline.frame.wrapping_add(1);
     }
+    // IK hints: renderer output, refreshed after the action tick.
+    update_ik_hints(&mut cx.state);
     (cx.state, cx.timeline, cx.events)
+}
+
+/// Update IK hand hints (renderer output only).
+///
+/// During ledge-grab actions the sim publishes world-space hand targets
+/// (the grabbed edge, offset laterally by 25 units) so a renderer can
+/// solve arm IK. All other actions clear the hints. Output-only: never
+/// read by simulation logic, never hashed, never recorded in goldens.
+fn update_ik_hints(state: &mut CharacterState) {
+    use crate::state::ActionId;
+    let is_ledge = matches!(
+        state.action,
+        ActionId::LEDGE_GRAB
+            | ActionId::LEDGE_CLIMB_FAST
+            | ActionId::LEDGE_CLIMB_SLOW_1
+            | ActionId::LEDGE_CLIMB_SLOW_2
+    );
+    if is_ledge {
+        if let Some(edge) = state.grab_point {
+            let fx = crate::trig::sin(state.face_yaw);
+            let fz = crate::trig::cos(state.face_yaw);
+            // Lateral axis: horizontal perpendicular of the facing.
+            let offset = Vec3::new(-fz * 25.0, 0.0, fx * 25.0);
+            state.ik_hand_l = Some(edge + offset);
+            state.ik_hand_r = Some(edge - offset);
+            return;
+        }
+    }
+    state.ik_hand_l = None;
+    state.ik_hand_r = None;
 }
 
 /// Output of the ground step routine.
@@ -263,6 +295,32 @@ mod tests {
             0,
         );
         w
+    }
+
+    #[test]
+    fn ik_hints_set_during_ledge_grab() {
+        use crate::state::ActionId;
+        // Simulate a grab: ledge action + recorded edge point.
+        let mut state = CharacterState {
+            action: ActionId::LEDGE_GRAB,
+            grab_point: Some(Vec3::new(0.0, 400.0, 400.0)),
+            face_yaw: crate::angles::Angle::ZERO, // facing +z
+            ..Default::default()
+        };
+        update_ik_hints(&mut state);
+        assert!(state.ik_hand_l.is_some());
+        assert!(state.ik_hand_r.is_some());
+        let l = state.ik_hand_l.unwrap();
+        let r = state.ik_hand_r.unwrap();
+        // Hands offset laterally (±25) from the edge, at edge height.
+        assert!((l.y - 400.0).abs() < 0.01);
+        assert!((r.y - 400.0).abs() < 0.01);
+        assert!((l - r).length() > 49.0 && (l - r).length() < 51.0);
+        // Leaving the ledge clears the hints.
+        state.action = ActionId::IDLE;
+        update_ik_hints(&mut state);
+        assert!(state.ik_hand_l.is_none());
+        assert!(state.ik_hand_r.is_none());
     }
 
     #[test]

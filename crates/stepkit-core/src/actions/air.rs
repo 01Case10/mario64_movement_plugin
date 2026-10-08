@@ -1009,6 +1009,14 @@ fn try_ledge_grab(cx: &mut ActionCx, wall_normal: glam::Vec3) -> Option<ActionRe
     } else {
         probe_base - into_wall * (back_d + 30.0)
     };
+    // Record the grabbed edge for IK hints: the wall face at the ledge top.
+    // (Renderer-only output; simulation logic never reads it.)
+    let face_xz = if fwd_d <= back_d {
+        probe_base + into_wall * fwd_d
+    } else {
+        probe_base - into_wall * back_d
+    };
+    cx.state.grab_point = Some(glam::Vec3::new(face_xz.x, floor.y, face_xz.z));
     // Grab: snap so Mario's HANDS are at the ledge top, body hanging below:
     // feet end up one body-height under the grabbed floor. (Snapping the
     // feet to floor.y leaves him standing ON the ledge in the grab pose.)
