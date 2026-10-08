@@ -189,7 +189,12 @@ impl ActionRegistry {
         r.register_builtin(ActionId::CROUCH, ground::Crouch);
         r.register_builtin(ActionId::CRAWL, ground::Crawl);
         r.register_builtin(water::id::WATER_PLUNGE, water::WaterPlunge);
-        r.register_builtin(water::id::SWIMMING, water::Swimming);
+        r.register_builtin(water::id::WATER_IDLE, water::WaterIdle);
+        r.register_builtin(water::id::WATER_ACTION_END, water::WaterActionEnd);
+        r.register_builtin(water::id::BREASTSTROKE, water::Breaststroke);
+        r.register_builtin(water::id::SWIMMING_END, water::SwimmingEnd);
+        r.register_builtin(water::id::FLUTTER_KICK, water::FlutterKick);
+        r.register_builtin(ActionId::WATER_JUMP, air::WaterJump);
         r
     }
 
@@ -260,6 +265,13 @@ mod tests {
             ActionId::JUMP,
             ActionId::SLIDE_KICK,
             ActionId::FREEFALL,
+            ActionId::WATER_JUMP,
+            water::id::WATER_PLUNGE,
+            water::id::WATER_IDLE,
+            water::id::WATER_ACTION_END,
+            water::id::BREASTSTROKE,
+            water::id::SWIMMING_END,
+            water::id::FLUTTER_KICK,
         ] {
             assert!(r.get(id).is_some(), "{id:?}");
         }

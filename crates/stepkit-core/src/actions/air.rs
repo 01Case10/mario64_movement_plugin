@@ -39,6 +39,7 @@ pub mod slot {
     pub const AIR_HIT_WALL: u32 = 31;
     pub const SOFT_BONK: u32 = 32;
     pub const JUMP_KICK: u32 = 37;
+    pub const WATER_JUMP: u32 = 42;
 }
 
 /// Per-action air behavior switches.
@@ -52,6 +53,10 @@ struct AirConfig {
     allow_pound: bool,
     /// Whether this action may ledge-grab (documented per action).
     can_ledge_grab: bool,
+    /// When true, wall hits slide along the wall (forward speed reset to
+    /// 15) instead of routing to the air-hit-wall state. Used by the water
+    /// jump. (verified: decomp-derived)
+    wall_slide: bool,
     /// Whether the shared cancel set (water plunge, wall kick, dive,
     /// pound) runs. Disabled for the dead fall (no input response).
     allow_cancels: bool,
@@ -183,7 +188,20 @@ fn air_common(cx: &mut ActionCx, prev_buttons: u16, cfg: &AirConfig) -> Option<A
                 return Some(r);
             }
         }
-        if !stopped_dead {
+        if cfg.wall_slide {
+            // Water jump: slide along the wall instead of bonking; forward
+            // speed resets to 15. (verified: decomp-derived)
+            // spec: swim.wall_slide_speed
+            let (fx, fz) = cx.forward_xz();
+            cx.state.vel.x = fx * 15.0;
+            cx.state.vel.z = fz * 15.0;
+            let dot = cx.state.vel.x * n.x + cx.state.vel.z * n.z;
+            if dot < 0.0 {
+                cx.state.vel.x -= dot * n.x;
+                cx.state.vel.z -= dot * n.z;
+            }
+            cx.state.forward_speed = 15.0;
+        } else if !stopped_dead {
             if speed > 16.0 {
                 // Solid hit -> the transient air-hit-wall state: a 2-frame
                 // wall-kick window, then knockback or soft bonk by speed.
@@ -329,6 +347,7 @@ fn enter_landing_for(cx: &mut ActionCx, fall_speed: f32) -> ActionResult {
         ActionId::DIVE => super::ground::enter_dive_slide(cx),
         ActionId::SLIDE_KICK => super::ground::enter_slide_kick_slide(cx),
         ActionId::WALL_KICK_AIR => cx.goto(ActionId::JUMP_LAND, arg),
+        ActionId::WATER_JUMP => cx.goto(ActionId::JUMP_LAND, arg),
         ActionId::STEEP_JUMP => {
             // Still moving backward along facing -> slide; else jump-land.
             if cx.state.forward_speed < 0.0 {
@@ -376,6 +395,7 @@ fn base_air_config() -> AirConfig {
         allow_pound: true,
         can_ledge_grab: true,
         allow_cancels: true,
+        wall_slide: false,
     }
 }
 
@@ -668,6 +688,16 @@ air_action!(
     base_air_config(),
     slot::ROLLOUT
 );
+air_action!(
+    WaterJump,
+    "WaterJump",
+    AirConfig {
+        height_control: false, // not in the reference's jump-height set
+        wall_slide: true,      // walls slide (forward reset 15), no bonk
+        ..base_air_config()
+    },
+    slot::WATER_JUMP
+);
 
 /// Jump kick: B in slow air, or A on the first punch frame. Committed to
 /// the kick (no dive cancel); ground pound still allowed. Landing ->
@@ -821,6 +851,17 @@ fn enter_wall_kick_flight(cx: &mut ActionCx, wall_normal: glam::Vec3, vy: f32) -
 /// (ID verified: wiki:Wall Kick rev 19311)
 pub fn enter_wall_kick(cx: &mut ActionCx, wall_normal: glam::Vec3) -> ActionResult {
     enter_wall_kick_flight(cx, wall_normal, 62.0)
+}
+
+/// Water jump entry: vy = 62, forward speed raised to at least 15.
+/// (verified: decomp-derived)
+pub fn enter_water_jump(cx: &mut ActionCx) -> ActionResult {
+    // spec: swim.jump_vertical / swim.jump_forward_min (verified: decomp-derived)
+    cx.state.forward_speed = cx.state.forward_speed.max(15.0);
+    set_air_velocity(cx, 62.0);
+    cx.timeline.slot = slot::WATER_JUMP;
+    cx.events.push(Event::Jumped { velocity_y: 62.0 });
+    cx.goto(ActionId::WATER_JUMP, 0)
 }
 
 /// Air-hit-wall entry: remove the into-wall velocity component so the
