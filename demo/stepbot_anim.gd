@@ -66,11 +66,21 @@ func _animate(_delta: float) -> void:
 		0x300022E2:  # Water plunge: streamline.
 			arm_l.rotation.x = -2.8
 			arm_r.rotation.x = -2.8
-		0x40000E3:  # Swimming: stroke.
+		0x380022C0:  # Water idle: tread.
+			stroke = sin(time * 2.0) * 0.4
+			arm_l.rotation.x = -1.2 + stroke * 0.5
+			arm_r.rotation.x = -1.2 - stroke * 0.5
+		0x300024D0, 0x300024D2:  # Breaststroke / flutter kick: stroke.
 			stroke = sin(time * 4.0)
 			arm_l.rotation.x = -1.5 + stroke * 0.8
 			arm_r.rotation.x = -1.5 - stroke * 0.8
 			leg_swing = sin(time * 4.0) * 0.3
+		0x300024D1, 0x300022C2:  # Glide / recovery: streamlined drift.
+			arm_l.rotation.x = -2.2
+			arm_r.rotation.x = -2.2
+		0x01000889:  # Water jump: streamline, like the plunge.
+			arm_l.rotation.x = -2.8
+			arm_r.rotation.x = -2.8
 		_:
 			body.position.y = 0.85
 	

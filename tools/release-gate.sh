@@ -28,8 +28,8 @@ cargo build -p stepkit-cli 2>/dev/null
 pass=0; fail=0
 for s in traces/scenarios/*.ron; do
   id=$(basename "$s" .ron); g="traces/golden/$id.csv"
-  ./target/debug/stepkit trace diff --scenario "$s" --golden "$g" --mode free 2>&1 | grep -q "Result: PASS" && pass=$((pass+1)) || { echo "FREE FAIL $id"; fail=$((fail+1)); }
-  ./target/debug/stepkit trace diff --scenario "$s" --golden "$g" --mode teacher-forced 2>&1 | grep -q "Result: PASS" && pass=$((pass+1)) || { echo "TF FAIL $id"; fail=$((fail+1)); }
+  ./target/debug/stepkit trace diff --scenario "$s" --golden "$g" --mode free 2>&1 | grep "Result: PASS" > /dev/null && pass=$((pass+1)) || { echo "FREE FAIL $id"; fail=$((fail+1)); }
+  ./target/debug/stepkit trace diff --scenario "$s" --golden "$g" --mode teacher-forced 2>&1 | grep "Result: PASS" > /dev/null && pass=$((pass+1)) || { echo "TF FAIL $id"; fail=$((fail+1)); }
 done
 echo "gate: passed=$pass failed=$fail"
 [ "$fail" -eq 0 ] || { echo "GATE FAILED"; exit 1; }

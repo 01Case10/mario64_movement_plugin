@@ -31,7 +31,12 @@ const ACTION_NAMES := {
 	0x40000447: "Butt Slide",
 	0x4000088C: "Freefall",
 	0x300022E2: "Water Plunge",
-	0x40000E3: "Swimming",
+	0x380022C0: "Water Idle",
+	0x300022C2: "Water Action End",
+	0x300024D0: "Breaststroke",
+	0x300024D1: "Swimming End",
+	0x300024D2: "Flutter Kick",
+	0x01000889: "Water Jump",
 	0x40000010: "Crouch",
 	0x40000011: "Crawl",
 }

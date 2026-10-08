@@ -743,12 +743,57 @@ confidence = "high"
 reviewed_by = "unreviewed"
 date = "2026-10-08"
 
-[actions.swimming]
-value = "0x40000E3"
+[actions.water_idle]
+value = "0x380022C0"
 unit = "action id"
-source = { kind = "provisional", note = "STEPKIT-PROVISIONAL (bit 30): no community page found" }
-evidence = []
-confidence = "low"
+source = { kind = "decomp", note = "decomp-derived action index (ACT_WATER_IDLE); approved 2026-10-08" }
+evidence = ["l1:anchor_plunge_to_idle", "scenario:swim"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[actions.water_action_end]
+value = "0x300022C2"
+unit = "action id"
+source = { kind = "decomp", note = "decomp-derived action index (ACT_WATER_ACTION_END); approved 2026-10-08" }
+evidence = ["l1:anchor_plunge_to_idle", "scenario:swim"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[actions.breaststroke]
+value = "0x300024D0"
+unit = "action id"
+source = { kind = "decomp", note = "decomp-derived action index (ACT_BREASTSTROKE); approved 2026-10-08" }
+evidence = ["l1:anchor_breaststroke_chain", "scenario:swim"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[actions.swimming_end]
+value = "0x300024D1"
+unit = "action id"
+source = { kind = "decomp", note = "decomp-derived action index (ACT_SWIMMING_END); approved 2026-10-08" }
+evidence = ["l1:anchor_swimming_end_glide", "scenario:swim"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[actions.flutter_kick]
+value = "0x300024D2"
+unit = "action id"
+source = { kind = "decomp", note = "decomp-derived action index (ACT_FLUTTER_KICK); approved 2026-10-08" }
+evidence = ["l1:anchor_flutter_kick_approach", "scenario:swim"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[actions.water_jump]
+value = "0x01000889"
+unit = "action id"
+source = { kind = "decomp", note = "decomp-derived action index (ACT_WATER_JUMP); approved 2026-10-08" }
+evidence = ["l1:anchor_water_jump_entry", "scenario:water_jump"]
+confidence = "medium"
 reviewed_by = "unreviewed"
 date = "2026-10-08"
 
@@ -1414,5 +1459,279 @@ unit = "frames"
 source = { kind = "decomp", note = "decomp-derived ground bonk decel window; approved 2026-10-08" }
 evidence = ["scenario:ground_bonk"]
 confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+# ------------------------------------------------------------------ swim ---
+# Phase F water rework: the breaststroke state machine. All values
+# decomp-derived (behavioral); approved 2026-10-08.
+
+[swim.plunge_end_frames]
+value = 20
+unit = "frames"
+source = { kind = "decomp", note = "decomp-derived: plunge ends on floor contact or after 20 frames; approved 2026-10-08" }
+evidence = ["l1:anchor_plunge_to_idle", "scenario:swim"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[swim.idle_target_speed]
+value = 16.0
+unit = "units per frame"
+source = { kind = "decomp", note = "decomp-derived tread speed; approved 2026-10-08" }
+evidence = ["l1:anchor_plunge_to_idle", "scenario:swim"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[swim.idle_approach]
+value = 1.0
+unit = "units per frame^2"
+source = { kind = "decomp", note = "decomp-derived tread approach rate; approved 2026-10-08" }
+evidence = ["l1:anchor_plunge_to_idle"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[swim.idle_drift]
+value = 0.98
+unit = "factor per frame"
+source = { kind = "decomp", note = "decomp-derived no-stick drift; approved 2026-10-08" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[swim.stroke_entry_gain]
+value = 0.5
+unit = "units per frame"
+source = { kind = "decomp", note = "decomp-derived breaststroke entry; approved 2026-10-08" }
+evidence = ["l1:anchor_breaststroke_chain"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[swim.stroke_power_gain]
+value = 1.5
+unit = "units per frame^2"
+source = { kind = "decomp", note = "decomp-derived breaststroke power phase; approved 2026-10-08" }
+evidence = ["l1:anchor_breaststroke_power_and_end"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[swim.stroke_power_frame]
+value = 9
+unit = "frames"
+source = { kind = "decomp", note = "decomp-derived power phase start; approved 2026-10-08" }
+evidence = ["l1:anchor_breaststroke_power_and_end"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[swim.stroke_end_frame]
+value = 14
+unit = "frames"
+source = { kind = "decomp", note = "decomp-derived stroke length; approved 2026-10-08" }
+evidence = ["l1:anchor_breaststroke_power_and_end"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[swim.chain_window_start]
+value = 2
+unit = "frames"
+source = { kind = "decomp", note = "decomp-derived chain window; approved 2026-10-08" }
+evidence = ["l1:anchor_breaststroke_chain"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[swim.chain_window_end]
+value = 5
+unit = "frames"
+source = { kind = "decomp", note = "decomp-derived chain window; approved 2026-10-08" }
+evidence = ["l1:anchor_breaststroke_chain"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[swim.chain_bonus]
+value = 10
+unit = "strength"
+source = { kind = "decomp", note = "decomp-derived chained-stroke bonus; approved 2026-10-08" }
+evidence = ["l1:anchor_breaststroke_chain"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[swim.strength_default]
+value = 160
+unit = "strength (speed = strength/10)"
+source = { kind = "decomp", note = "decomp-derived base swim strength; approved 2026-10-08" }
+evidence = ["l1:anchor_breaststroke_chain"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[swim.strength_max]
+value = 280
+unit = "strength (speed = strength/10)"
+source = { kind = "decomp", note = "decomp-derived max chained strength; approved 2026-10-08" }
+evidence = ["l1:anchor_breaststroke_chain"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[swim.flutter_target]
+value = 12.0
+unit = "units per frame"
+source = { kind = "decomp", note = "decomp-derived flutter-kick speed; approved 2026-10-08" }
+evidence = ["l1:anchor_flutter_kick_approach"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[swim.flutter_accel_up]
+value = 0.1
+unit = "units per frame^2"
+source = { kind = "decomp", note = "decomp-derived flutter approach rate; approved 2026-10-08" }
+evidence = ["l1:anchor_flutter_kick_approach"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[swim.flutter_accel_down]
+value = 0.15
+unit = "units per frame^2"
+source = { kind = "decomp", note = "decomp-derived flutter approach rate; approved 2026-10-08" }
+evidence = ["l1:anchor_flutter_kick_approach"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[swim.glide_decay]
+value = 0.25
+unit = "units per frame^2"
+source = { kind = "decomp", note = "decomp-derived glide decay; approved 2026-10-08" }
+evidence = ["l1:anchor_swimming_end_glide"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[swim.glide_end_frame]
+value = 15
+unit = "frames"
+source = { kind = "decomp", note = "decomp-derived glide length; approved 2026-10-08" }
+evidence = ["l1:anchor_swimming_end_glide"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[swim.glide_rechain_frame]
+value = 7
+unit = "frames"
+source = { kind = "decomp", note = "decomp-derived earliest re-chain frame; approved 2026-10-08" }
+evidence = ["l1:anchor_swimming_end_glide"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[swim.action_end_frames]
+value = 10
+unit = "frames"
+source = { kind = "decomp", note = "decomp-derived recovery length; approved 2026-10-08" }
+evidence = ["l1:anchor_plunge_to_idle"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[swim.action_end_decay]
+value = 0.95
+unit = "factor per frame"
+source = { kind = "decomp", note = "decomp-derived recovery decay; approved 2026-10-08" }
+evidence = ["l1:anchor_plunge_to_idle"]
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[swim.surface_ceiling]
+value = 1.5
+unit = "SM64 units below the surface"
+source = { kind = "decomp", note = "surface ceiling; deviation: placeholder used level-40, moved so the water-jump surface check is reachable; approved 2026-10-08" }
+evidence = ["l1:anchor_water_jump_entry", "scenario:water_jump"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[swim.breach_pitch]
+value = 0.7
+unit = "pitch (1.0 = straight up)"
+source = { kind = "decomp", note = "decomp-derived hard-breach threshold; approved 2026-10-08" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[swim.breach_speed]
+value = 10.0
+unit = "units per frame"
+source = { kind = "decomp", note = "decomp-derived hard-breach threshold; approved 2026-10-08" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[swim.jump_surface_dist]
+value = 1.5
+unit = "SM64 units"
+source = { kind = "decomp", note = "decomp-derived water-jump surface window; approved 2026-10-08" }
+evidence = ["l1:anchor_water_jump_entry", "scenario:water_jump"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[swim.jump_stick_threshold]
+value = 60
+unit = "stick units"
+source = { kind = "decomp", note = "reference checks stickY < -60 (N64 pull-down = swim-up); translated to this core's push-up = swim-up convention as stick_y > +60; approved 2026-10-08" }
+evidence = ["l1:anchor_water_jump_entry"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[swim.jump_vertical]
+value = 62.0
+unit = "units per frame"
+source = { kind = "decomp", note = "decomp-derived water-jump entry; approved 2026-10-08" }
+evidence = ["l1:anchor_water_jump_entry"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[swim.jump_forward_min]
+value = 15.0
+unit = "units per frame"
+source = { kind = "decomp", note = "decomp-derived water-jump entry; approved 2026-10-08" }
+evidence = ["l1:anchor_water_jump_entry"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[swim.wall_slide_speed]
+value = 15.0
+unit = "units per frame"
+source = { kind = "decomp", note = "decomp-derived water-jump wall behavior; approved 2026-10-08" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[swim.steer_rate]
+value = 1024
+unit = "angle units per frame (0x400)"
+source = { kind = "decomp", note = "water steering rate; approved 2026-10-08" }
+evidence = []
+confidence = "low"
 reviewed_by = "unreviewed"
 date = "2026-10-08"
