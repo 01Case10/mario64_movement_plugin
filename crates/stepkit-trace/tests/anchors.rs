@@ -990,3 +990,694 @@ fn anchor_knockback_ids() {
     assert_eq!(cx.state.action, ActionId::HARD_BACKWARD_AIR_KB);
     assert_eq!(cx.state.action_arg, 1);
 }
+
+// ================= Phase D anchors =================
+
+/// Tick `n` frames with a fixed input in the given world.
+fn tick_n(state: CharacterState, input: RawInput, n: u32, world: &SurfaceWorld) -> CharacterState {
+    let params = MovementParams::default();
+    let registry = ActionRegistry::sm64_style();
+    let mut state = state;
+    let mut prev = 0u16;
+    for _ in 0..n {
+        let (s, _, _) = stepkit_core::step::tick(
+            state,
+            input,
+            world,
+            &params,
+            Timeline::default(),
+            &registry,
+            prev,
+        );
+        state = s;
+        prev = input.buttons;
+    }
+    state
+}
+
+fn neutral_input() -> RawInput {
+    RawInput {
+        stick_x: 0,
+        stick_y: 0,
+        buttons: 0,
+        cam_yaw: Angle::ZERO,
+    }
+}
+
+fn quicksand_world() -> SurfaceWorld {
+    let mut w = SurfaceWorld::new();
+    w.add_box(
+        Vec3::new(-2000.0, -100.0, -2000.0),
+        Vec3::new(2000.0, 0.0, 2000.0),
+        SurfaceKind::Quicksand,
+        0,
+    );
+    w
+}
+
+#[test]
+fn anchor_fall_damage_hard() {
+    // Fall height > 3000 with impact speed > 55: 16 damage and the
+    // hard-knockback landing (arg 1 = hard).
+    let world = flat_world();
+    let params = MovementParams::default();
+    let registry = ActionRegistry::sm64_style();
+    let mut state = CharacterState {
+        action: ActionId::FREEFALL,
+        pos: Vec3::new(0.0, 3200.0, 0.0),
+        vel: Vec3::ZERO,
+        ..CharacterState::default()
+    };
+    let mut landed = None;
+    let mut prev = 0u16;
+    for _ in 0..200 {
+        let (s, _, _) = stepkit_core::step::tick(
+            state,
+            neutral_input(),
+            &world,
+            &params,
+            Timeline::default(),
+            &registry,
+            prev,
+        );
+        state = s;
+        prev = 0;
+        if state.action != ActionId::FREEFALL {
+            landed = Some(state.action);
+            break;
+        }
+    }
+    assert_eq!(landed, Some(ActionId::HARD_BACKWARD_AIR_KB));
+    assert_eq!(state.action_arg, 1, "hard flag in arg");
+    assert_eq!(state.health, 0x880 - 16, "health {}", state.health);
+}
+
+#[test]
+fn anchor_fall_damage_squish() {
+    // Fall height in (1150, 3000] on a non-slippery floor: 8 damage and
+    // 30 frames of squish.
+    let world = flat_world();
+    let params = MovementParams::default();
+    let registry = ActionRegistry::sm64_style();
+    let mut state = CharacterState {
+        action: ActionId::FREEFALL,
+        pos: Vec3::new(0.0, 1300.0, 0.0),
+        vel: Vec3::ZERO,
+        ..CharacterState::default()
+    };
+    let mut prev = 0u16;
+    for _ in 0..200 {
+        let (s, _, _) = stepkit_core::step::tick(
+            state,
+            neutral_input(),
+            &world,
+            &params,
+            Timeline::default(),
+            &registry,
+            prev,
+        );
+        state = s;
+        prev = 0;
+        if state.action == ActionId::FREEFALL_LAND {
+            break;
+        }
+    }
+    assert_eq!(state.action, ActionId::FREEFALL_LAND);
+    assert_eq!(state.health, 0x880 - 8, "health {}", state.health);
+    assert_eq!(state.squish_timer, 30, "squish {}", state.squish_timer);
+
+    // While squished the intended stick magnitude is quartered: full
+    // tilt (0,80) reshapes to intended 50, squished to 12.5.
+    let stick = RawInput {
+        stick_x: 0,
+        stick_y: 80,
+        buttons: 0,
+        cam_yaw: Angle::ZERO,
+    };
+    let cx = ActionCx {
+        state,
+        input: stick,
+        world: &world,
+        params: &params,
+        timeline: Timeline::default(),
+        events: Vec::new(),
+    };
+    assert!(
+        (cx.intended_magnitude() - 12.5).abs() < 1e-3,
+        "squished mag {}",
+        cx.intended_magnitude()
+    );
+
+    // Jump velocity is halved while squished.
+    use stepkit_core::actions::air::enter_jump;
+    let mut cx = action_cx(state, &world, &params);
+    let _ = enter_jump(&mut cx);
+    assert!(
+        (cx.state.vel.y - 21.0).abs() < 1e-3,
+        "squished jump vy {}",
+        cx.state.vel.y
+    );
+
+    // A on landing gives a single jump only (double chain suppressed).
+    let land = CharacterState {
+        action: ActionId::JUMP_LAND,
+        squish_timer: 30,
+        land_from: ActionId::JUMP,
+        ..CharacterState::default()
+    };
+    let press_a = RawInput {
+        stick_x: 0,
+        stick_y: 0,
+        buttons: buttons::A,
+        cam_yaw: Angle::ZERO,
+    };
+    let (s, _, _) = stepkit_core::step::tick(
+        land,
+        press_a,
+        &world,
+        &params,
+        Timeline::default(),
+        &registry,
+        0,
+    );
+    assert_eq!(s.action, ActionId::JUMP, "squish suppresses the chain");
+}
+
+#[test]
+fn anchor_no_fall_damage_small_falls() {
+    // A normal jump landing (~200 units) takes no damage and no squish.
+    let world = flat_world();
+    let state = CharacterState {
+        action: ActionId::FREEFALL,
+        pos: Vec3::new(0.0, 200.0, 0.0),
+        vel: Vec3::new(0.0, -10.0, 0.0),
+        ..CharacterState::default()
+    };
+    let mut s = state;
+    let params = MovementParams::default();
+    let registry = ActionRegistry::sm64_style();
+    for _ in 0..200 {
+        let (ns, _, _) = stepkit_core::step::tick(
+            s,
+            neutral_input(),
+            &world,
+            &params,
+            Timeline::default(),
+            &registry,
+            0,
+        );
+        s = ns;
+        if s.action == ActionId::FREEFALL_LAND {
+            break;
+        }
+    }
+    assert_eq!(s.health, 0x880);
+    assert_eq!(s.squish_timer, 0);
+}
+
+#[test]
+fn anchor_surface_classes() {
+    use stepkit_core::world::SurfaceClass;
+    // Kind -> class mapping.
+    assert_eq!(
+        SurfaceClass::of(SurfaceKind::Default),
+        SurfaceClass::Default
+    );
+    assert_eq!(SurfaceClass::of(SurfaceKind::Slide), SurfaceClass::Slippery);
+    assert_eq!(
+        SurfaceClass::of(SurfaceKind::Quicksand),
+        SurfaceClass::NotSlippery
+    );
+    // Per-class slide accel / loss.
+    assert_eq!(SurfaceClass::VerySlippery.slide_accel(), 10.0);
+    assert_eq!(SurfaceClass::VerySlippery.slide_loss(), 0.98);
+    assert_eq!(SurfaceClass::Slippery.slide_accel(), 8.0);
+    assert_eq!(SurfaceClass::Slippery.slide_loss(), 0.96);
+    assert_eq!(SurfaceClass::Default.slide_accel(), 7.0);
+    assert_eq!(SurfaceClass::Default.slide_loss(), 0.92);
+    assert_eq!(SurfaceClass::NotSlippery.slide_accel(), 5.0);
+    assert_eq!(SurfaceClass::NotSlippery.slide_loss(), 0.92);
+    // Slippery-floor thresholds.
+    assert!((SurfaceClass::VerySlippery.slippery_floor_y() - 0.9848077).abs() < 1e-6);
+    assert!((SurfaceClass::Slippery.slippery_floor_y() - 0.9396926).abs() < 1e-6);
+    assert!((SurfaceClass::Default.slippery_floor_y() - 0.7880108).abs() < 1e-6);
+    assert!(
+        SurfaceClass::NotSlippery.slippery_floor_y() < 0.0,
+        "never slippery"
+    );
+    // Steep thresholds.
+    assert!((SurfaceClass::VerySlippery.steep_y() - 0.9659258).abs() < 1e-6);
+    assert!((SurfaceClass::Slippery.steep_y() - 0.9396926).abs() < 1e-6);
+    assert!((SurfaceClass::Default.steep_y() - 0.8660254).abs() < 1e-6);
+    assert!((SurfaceClass::NotSlippery.steep_y() - 0.8660254).abs() < 1e-6);
+    // New actions registered.
+    let r = ActionRegistry::sm64_style();
+    for id in [
+        ActionId::IN_QUICKSAND,
+        ActionId::QUICKSAND_JUMP_LAND,
+        ActionId::LEDGE_CLIMB_FAST,
+        ActionId::LEDGE_CLIMB_SLOW_1,
+        ActionId::LEDGE_CLIMB_SLOW_2,
+    ] {
+        assert!(r.get(id).is_some(), "{id:?} registered");
+    }
+    // New action IDs (decomp action index).
+    assert_eq!(ActionId::IN_QUICKSAND.0, 0x0002020D);
+    assert_eq!(ActionId::QUICKSAND_JUMP_LAND.0, 0x04000476);
+    assert_eq!(ActionId::LEDGE_CLIMB_FAST.0, 0x0000054F);
+    assert_eq!(ActionId::LEDGE_CLIMB_SLOW_1.0, 0x0000054C);
+    assert_eq!(ActionId::LEDGE_CLIMB_SLOW_2.0, 0x0000054D);
+}
+
+#[test]
+fn anchor_floor_classification_steep() {
+    // Floors with normal.y in [0.2924, 0.5) are standable; below is wall.
+    // normal.y = length / sqrt(length^2 + height^2).
+    use stepkit_core::world::CollisionWorld;
+    let mut w = SurfaceWorld::new();
+    w.add_ramp(
+        Vec3::new(0.0, 0.0, 0.0),
+        Vec3::new(0.0, 0.0, 1.0),
+        100.0,
+        229.13, // normal.y = 0.4
+        100.0,
+        SurfaceKind::Default,
+        0,
+    );
+    let hit = w
+        .find_floor(Vec3::new(0.0, 150.0, 50.0), 1.0)
+        .expect("0.4-normal ramp is a floor");
+    assert!((hit.normal.y - 0.4).abs() < 0.01, "ny {}", hit.normal.y);
+    let mut w2 = SurfaceWorld::new();
+    w2.add_ramp(
+        Vec3::new(0.0, 0.0, 0.0),
+        Vec3::new(0.0, 0.0, 1.0),
+        100.0,
+        489.9, // normal.y = 0.2
+        100.0,
+        SurfaceKind::Default,
+        0,
+    );
+    assert!(
+        w2.find_floor(Vec3::new(0.0, 300.0, 50.0), 1.0).is_none(),
+        "0.2-normal ramp is a wall"
+    );
+}
+
+#[test]
+fn anchor_quicksand_sink() {
+    let world = quicksand_world();
+    // Stationary: 0.5/frame, min 1.1 on entry: 1.1, 1.6, 2.1, 2.6.
+    let s = tick_n(
+        CharacterState {
+            action: ActionId::IDLE,
+            ..CharacterState::default()
+        },
+        neutral_input(),
+        4,
+        &world,
+    );
+    assert!(
+        (s.quicksand_depth - 2.6).abs() < 1e-4,
+        "depth {}",
+        s.quicksand_depth
+    );
+    // Moving: 0.25/frame: 1.1, 1.35, 1.6, 1.85.
+    let stick = RawInput {
+        stick_x: 0,
+        stick_y: 80,
+        buttons: 0,
+        cam_yaw: Angle::ZERO,
+    };
+    let s = tick_n(
+        CharacterState {
+            action: ActionId::WALKING,
+            ..CharacterState::default()
+        },
+        stick,
+        4,
+        &world,
+    );
+    assert!(
+        (s.quicksand_depth - 1.85).abs() < 1e-4,
+        "depth {}",
+        s.quicksand_depth
+    );
+    // Shallow cap: 40 stationary ticks -> 10.0.
+    let s = tick_n(
+        CharacterState {
+            action: ActionId::IDLE,
+            ..CharacterState::default()
+        },
+        neutral_input(),
+        40,
+        &world,
+    );
+    assert!(
+        (s.quicksand_depth - 10.0).abs() < 1e-4,
+        "cap {}",
+        s.quicksand_depth
+    );
+    // Other floors reset the depth.
+    let flat = flat_world();
+    let s = tick_n(
+        CharacterState {
+            action: ActionId::IDLE,
+            quicksand_depth: 7.0,
+            ..CharacterState::default()
+        },
+        neutral_input(),
+        1,
+        &flat,
+    );
+    assert_eq!(s.quicksand_depth, 0.0);
+    // Jump velocity is halved while depth > 1.
+    use stepkit_core::actions::air::enter_jump;
+    let params = MovementParams::default();
+    let mut cx = action_cx(
+        CharacterState {
+            quicksand_depth: 5.0,
+            ..CharacterState::default()
+        },
+        &world,
+        &params,
+    );
+    let _ = enter_jump(&mut cx);
+    assert!(
+        (cx.state.vel.y - 21.0).abs() < 1e-3,
+        "halved jump vy {}",
+        cx.state.vel.y
+    );
+}
+
+#[test]
+fn anchor_quicksand_jump_land() {
+    // Landing with depth >= 11 -> QUICKSAND_JUMP_LAND: 13 frames, drains
+    // the depth, then idle.
+    let world = quicksand_world();
+    let params = MovementParams::default();
+    let registry = ActionRegistry::sm64_style();
+    let mut state = CharacterState {
+        action: ActionId::FREEFALL,
+        pos: Vec3::new(0.0, 100.0, 0.0),
+        vel: Vec3::new(0.0, -20.0, 0.0),
+        quicksand_depth: 12.0,
+        ..CharacterState::default()
+    };
+    let mut prev = 0u16;
+    for _ in 0..100 {
+        let (s, _, _) = stepkit_core::step::tick(
+            state,
+            neutral_input(),
+            &world,
+            &params,
+            Timeline::default(),
+            &registry,
+            prev,
+        );
+        state = s;
+        prev = 0;
+        if state.action == ActionId::QUICKSAND_JUMP_LAND {
+            break;
+        }
+    }
+    assert_eq!(state.action, ActionId::QUICKSAND_JUMP_LAND);
+    let depth_at_entry = state.quicksand_depth;
+    let s = tick_n(state, neutral_input(), 13, &world);
+    assert_eq!(s.action, ActionId::IDLE, "escape ends idle");
+    assert!(
+        s.quicksand_depth < depth_at_entry,
+        "depth drained {} -> {}",
+        depth_at_entry,
+        s.quicksand_depth
+    );
+}
+
+#[test]
+fn anchor_in_quicksand() {
+    // Depth > 30 (direct setup; v1's shallow cap keeps this out of normal
+    // play): IN_QUICKSAND. A/B jump (vy halved), Z crouches, depth < 30
+    // exits to idle.
+    let world = quicksand_world();
+    let params = MovementParams::default();
+    let registry = ActionRegistry::sm64_style();
+    let s = tick_n(
+        CharacterState {
+            action: ActionId::IDLE,
+            quicksand_depth: 31.0,
+            ..CharacterState::default()
+        },
+        neutral_input(),
+        1,
+        &world,
+    );
+    assert_eq!(s.action, ActionId::IN_QUICKSAND);
+    for (button, label) in [(buttons::A, "A"), (buttons::B, "B")] {
+        let press = RawInput {
+            stick_x: 0,
+            stick_y: 0,
+            buttons: button,
+            cam_yaw: Angle::ZERO,
+        };
+        let (sj, _, _) =
+            stepkit_core::step::tick(s, press, &world, &params, Timeline::default(), &registry, 0);
+        assert_eq!(sj.action, ActionId::JUMP, "{label} jumps");
+        assert!(
+            (sj.vel.y - 21.0).abs() < 1e-3,
+            "{label} halved vy {}",
+            sj.vel.y
+        );
+    }
+    let press_z = RawInput {
+        stick_x: 0,
+        stick_y: 0,
+        buttons: buttons::Z,
+        cam_yaw: Angle::ZERO,
+    };
+    let (sz, _, _) = stepkit_core::step::tick(
+        s,
+        press_z,
+        &world,
+        &params,
+        Timeline::default(),
+        &registry,
+        0,
+    );
+    assert_eq!(sz.action, ActionId::CROUCH, "Z crouches");
+    // Depth < 30 -> IDLE.
+    let s2 = tick_n(
+        CharacterState {
+            action: ActionId::IN_QUICKSAND,
+            quicksand_depth: 20.0,
+            ..CharacterState::default()
+        },
+        neutral_input(),
+        1,
+        &world,
+    );
+    assert_eq!(s2.action, ActionId::IDLE);
+}
+
+/// Wall + flat ledge top at y=400 for ledge tests.
+fn ledge_world() -> SurfaceWorld {
+    let mut w = SurfaceWorld::new();
+    w.add_box(
+        Vec3::new(-2000.0, -100.0, -2000.0),
+        Vec3::new(2000.0, 0.0, 2000.0),
+        SurfaceKind::Default,
+        0,
+    );
+    w.add_box(
+        Vec3::new(-200.0, 0.0, 400.0),
+        Vec3::new(200.0, 400.0, 500.0),
+        SurfaceKind::Default,
+        0,
+    );
+    w
+}
+
+fn hanging_state() -> CharacterState {
+    CharacterState {
+        action: ActionId::LEDGE_GRAB,
+        pos: Vec3::new(0.0, 400.0, 440.0),
+        face_yaw: Angle::ZERO, // facing +z, toward the wall
+        ..CharacterState::default()
+    }
+}
+
+#[test]
+fn anchor_ledge_let_go() {
+    // Stick more than 90 deg from the facing (away from the wall) lets go:
+    // forward -8, freefall.
+    let world = ledge_world();
+    let params = MovementParams::default();
+    let registry = ActionRegistry::sm64_style();
+    let away = RawInput {
+        stick_x: 0,
+        stick_y: -80, // intended yaw 180 deg, facing is 0
+        buttons: 0,
+        cam_yaw: Angle::ZERO,
+    };
+    let (s, _, _) = stepkit_core::step::tick(
+        hanging_state(),
+        away,
+        &world,
+        &params,
+        Timeline::default(),
+        &registry,
+        0,
+    );
+    assert_eq!(s.action, ActionId::FREEFALL, "stick away lets go");
+    assert!(
+        (s.forward_speed - -8.0).abs() < 1e-3,
+        "drop speed {}",
+        s.forward_speed
+    );
+    // Z also drops.
+    let press_z = RawInput {
+        stick_x: 0,
+        stick_y: 0,
+        buttons: buttons::Z,
+        cam_yaw: Angle::ZERO,
+    };
+    let (s, _, _) = stepkit_core::step::tick(
+        hanging_state(),
+        press_z,
+        &world,
+        &params,
+        Timeline::default(),
+        &registry,
+        0,
+    );
+    assert_eq!(s.action, ActionId::FREEFALL);
+}
+
+#[test]
+fn anchor_ledge_climb_fast() {
+    // A with headroom -> LEDGE_CLIMB_FAST -> IDLE after 8 frames, pulled
+    // onto the ledge.
+    let world = ledge_world();
+    let params = MovementParams::default();
+    let registry = ActionRegistry::sm64_style();
+    let press_a = RawInput {
+        stick_x: 0,
+        stick_y: 0,
+        buttons: buttons::A,
+        cam_yaw: Angle::ZERO,
+    };
+    let (s, _, _) = stepkit_core::step::tick(
+        hanging_state(),
+        press_a,
+        &world,
+        &params,
+        Timeline::default(),
+        &registry,
+        0,
+    );
+    assert_eq!(s.action, ActionId::LEDGE_CLIMB_FAST);
+    let s = tick_n(s, neutral_input(), 8, &world);
+    assert_eq!(s.action, ActionId::IDLE, "fast climb ends idle");
+    assert!(s.pos.z > 440.0, "pulled onto the ledge, z={}", s.pos.z);
+    assert!(
+        (s.pos.y - 400.0).abs() < 1.0,
+        "on the ledge top, y={}",
+        s.pos.y
+    );
+}
+
+#[test]
+fn anchor_ledge_climb_slow() {
+    // Stick toward the wall at 10+ hang frames -> SLOW_1 -> (timer 17)
+    // SLOW_2 -> (timer 11 + input) IDLE, pulled 14 forward.
+    let world = ledge_world();
+    let params = MovementParams::default();
+    let registry = ActionRegistry::sm64_style();
+    let toward = RawInput {
+        stick_x: 0,
+        stick_y: 80, // intended yaw 0 = toward the wall
+        buttons: 0,
+        cam_yaw: Angle::ZERO,
+    };
+    let mut hang = hanging_state();
+    hang.action_timer = 9; // tick() increments to 10
+    let (s, _, _) = stepkit_core::step::tick(
+        hang,
+        toward,
+        &world,
+        &params,
+        Timeline::default(),
+        &registry,
+        0,
+    );
+    assert_eq!(s.action, ActionId::LEDGE_CLIMB_SLOW_1);
+    let mut s2 = s;
+    s2.action_timer = 16; // tick() increments to 17
+    let (s2, _, _) = stepkit_core::step::tick(
+        s2,
+        toward,
+        &world,
+        &params,
+        Timeline::default(),
+        &registry,
+        0,
+    );
+    assert_eq!(s2.action, ActionId::LEDGE_CLIMB_SLOW_2);
+    let mut s3 = s2;
+    s3.action_timer = 10; // tick() increments to 11
+    let z_before = s3.pos.z;
+    let (s3, _, _) = stepkit_core::step::tick(
+        s3,
+        toward,
+        &world,
+        &params,
+        Timeline::default(),
+        &registry,
+        0,
+    );
+    assert_eq!(s3.action, ActionId::IDLE, "slow climb ends idle");
+    assert!(
+        (s3.pos.z - z_before - 14.0).abs() < 1e-3,
+        "pulled 14 forward, dz={}",
+        s3.pos.z - z_before
+    );
+}
+
+#[test]
+fn anchor_ledge_release_steep() {
+    // A ledge floor steeper than normal.y 0.9063 releases to freefall.
+    let mut w = SurfaceWorld::new();
+    w.add_box(
+        Vec3::new(-200.0, 0.0, 400.0),
+        Vec3::new(200.0, 400.0, 500.0),
+        SurfaceKind::Default,
+        0,
+    );
+    // Steep ramp (normal.y = 0.855) through the hang point as the "ledge".
+    w.add_ramp(
+        Vec3::new(0.0, 400.0, 400.0),
+        Vec3::new(0.0, 0.0, 1.0),
+        100.0,
+        -60.6,
+        100.0,
+        SurfaceKind::Default,
+        0,
+    );
+    let params = MovementParams::default();
+    let registry = ActionRegistry::sm64_style();
+    let state = CharacterState {
+        action: ActionId::LEDGE_GRAB,
+        pos: Vec3::new(0.0, 375.8, 440.0),
+        face_yaw: Angle::ZERO,
+        ..CharacterState::default()
+    };
+    let (s, _, _) = stepkit_core::step::tick(
+        state,
+        neutral_input(),
+        &w,
+        &params,
+        Timeline::default(),
+        &registry,
+        0,
+    );
+    assert_eq!(s.action, ActionId::FREEFALL, "steep ledge releases");
+}

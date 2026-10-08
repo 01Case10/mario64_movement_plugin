@@ -219,13 +219,13 @@ reviewed_by = "unreviewed"
 date = "2026-10-07"
 
 [collision.classify_floor_threshold]
-value = 0.5
+value = 0.2924
 unit = "normal y"
-source = { kind = "assumption", note = "working assumption (verify)" }
+source = { kind = "decomp-derived", note = "behavioral reference: normal.y < 0.2924 (~73 deg) is too steep to stand; no decomp source in repo" }
 evidence = []
-confidence = "low"
+confidence = "high"
 reviewed_by = "unreviewed"
-date = "2026-10-07"
+date = "2026-10-08"
 
 [collision.classify_ceiling_threshold]
 value = -0.5
@@ -949,3 +949,245 @@ evidence = []
 confidence = "low"
 reviewed_by = "unreviewed"
 date = "2026-10-07"
+[surface.class_slippery_y]
+value = [0.9848077, 0.9396926, 0.7880108, -1.0]
+unit = "normal y per class (very, slippery, default, not)"
+source = { kind = "decomp-derived", note = "behavioral reference: per-class slippery-floor thresholds; no decomp source in repo" }
+evidence = []
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[surface.class_slope_y]
+value = [0.9961947, 0.9848077, 0.9659258, 0.9396926]
+unit = "normal y per class (very, slippery, default, not)"
+source = { kind = "decomp-derived", note = "behavioral reference: per-class slope thresholds; no decomp source in repo" }
+evidence = []
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[surface.class_steep_y]
+value = [0.9659258, 0.9396926, 0.8660254, 0.8660254]
+unit = "normal y per class (very, slippery, default, not)"
+source = { kind = "decomp-derived", note = "behavioral reference: per-class steep thresholds; no decomp source in repo" }
+evidence = []
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[surface.class_slide_accel]
+value = [10.0, 8.0, 7.0, 5.0]
+unit = "units/frame per class (very, slippery, default, not)"
+source = { kind = "decomp-derived", note = "behavioral reference: per-class slide downhill accel; no decomp source in repo" }
+evidence = []
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[surface.class_slide_loss]
+value = [0.98, 0.96, 0.92, 0.92]
+unit = "retention/frame per class (very, slippery, default, not)"
+source = { kind = "decomp-derived", note = "behavioral reference: per-class slide decay; no decomp source in repo" }
+evidence = []
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[slide.speed_cap]
+value = 100.0
+unit = "units/frame"
+source = { kind = "decomp-derived", note = "behavioral reference: slide cap applies one frame late; no decomp source in repo" }
+evidence = []
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[slide.stop_speed_butt]
+value = 4.0
+unit = "units/frame"
+source = { kind = "decomp-derived", note = "behavioral reference: update_sliding stop speed; no decomp source in repo" }
+evidence = []
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[damage.health_full]
+value = 2176
+unit = "health (0x880)"
+source = { kind = "decomp-derived", note = "behavioral reference: full health; no decomp source in repo" }
+evidence = []
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[damage.death_health]
+value = 256
+unit = "health (0x100)"
+source = { kind = "decomp-derived", note = "behavioral reference: death below 0x100; no decomp source in repo" }
+evidence = []
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[damage.fall_speed_threshold]
+value = 55.0
+unit = "units/frame"
+source = { kind = "decomp-derived", note = "behavioral reference: fall damage assessed when impact speed > 55; no decomp source in repo" }
+evidence = []
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[damage.hard_height]
+value = 3000.0
+unit = "units"
+source = { kind = "decomp-derived", note = "behavioral reference: fall height tier for 16 damage + hard knockback; no decomp source in repo" }
+evidence = []
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[damage.hard_amount]
+value = 16
+unit = "health"
+source = { kind = "decomp-derived", note = "behavioral reference: no caps exist in the plugin, so the no-cap value; no decomp source in repo" }
+evidence = []
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[damage.squish_height]
+value = 1150.0
+unit = "units"
+source = { kind = "decomp-derived", note = "behavioral reference: fall height tier for 8 damage + squish on non-slippery floors; no decomp source in repo" }
+evidence = []
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[damage.squish_amount]
+value = 8
+unit = "health"
+source = { kind = "decomp-derived", note = "behavioral reference: no-cap value; no decomp source in repo" }
+evidence = []
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[damage.squish_frames]
+value = 30
+unit = "frames"
+source = { kind = "decomp-derived", note = "behavioral reference: squish duration; no decomp source in repo" }
+evidence = []
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[quicksand.sink_moving]
+value = 0.25
+unit = "depth/frame"
+source = { kind = "decomp-derived", note = "behavioral reference; no decomp source in repo" }
+evidence = []
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[quicksand.sink_stationary]
+value = 0.5
+unit = "depth/frame"
+source = { kind = "decomp-derived", note = "behavioral reference; no decomp source in repo" }
+evidence = []
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[quicksand.min_depth]
+value = 1.1
+unit = "depth"
+source = { kind = "decomp-derived", note = "behavioral reference: min depth on entry; no decomp source in repo" }
+evidence = []
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[quicksand.shallow_cap]
+value = 10.0
+unit = "depth"
+source = { kind = "decomp-derived", note = "v1 treats all quicksand as shallow; no decomp source in repo" }
+evidence = []
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[quicksand.in_quicksand_depth]
+value = 30.0
+unit = "depth"
+source = { kind = "decomp-derived", note = "behavioral reference: waist-deep action above this; v1 shallow cap keeps it aspirational; no decomp source in repo" }
+evidence = []
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[quicksand.jump_land_depth]
+value = 11.0
+unit = "depth"
+source = { kind = "decomp-derived", note = "behavioral reference: quicksand jump-land escape at/above this; no decomp source in repo" }
+evidence = []
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[ledge.release_slope_y]
+value = 0.9063
+unit = "normal y"
+source = { kind = "decomp-derived", note = "behavioral reference: ledge releases below this floor normal.y; no decomp source in repo" }
+evidence = []
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[actions.in_quicksand]
+value = "0x0002020D"
+unit = "action id"
+source = { kind = "decomp-derived", note = "behavioral reference: decomp action index; no decomp source in repo" }
+evidence = []
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[actions.quicksand_jump_land]
+value = "0x04000476"
+unit = "action id"
+source = { kind = "decomp-derived", note = "behavioral reference: decomp action index; no decomp source in repo" }
+evidence = []
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[actions.ledge_climb_fast]
+value = "0x0000054F"
+unit = "action id"
+source = { kind = "decomp-derived", note = "behavioral reference: decomp action index; no decomp source in repo" }
+evidence = []
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[actions.ledge_climb_slow_1]
+value = "0x0000054C"
+unit = "action id"
+source = { kind = "decomp-derived", note = "behavioral reference: decomp action index; no decomp source in repo" }
+evidence = []
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[actions.ledge_climb_slow_2]
+value = "0x0000054D"
+unit = "action id"
+source = { kind = "decomp-derived", note = "behavioral reference: decomp action index; no decomp source in repo" }
+evidence = []
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
