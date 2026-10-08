@@ -111,6 +111,15 @@ pub enum Assertion {
         min: f32,
         max: f32,
     },
+    /// The vertical velocity on the first recorded frame carrying this
+    /// action lies within `expected ± tol`. Encodes decomp-verified entry
+    /// velocities (jump vy, rollout vy, etc.). Fails if the action never
+    /// occurs.
+    ActionEntryVelY {
+        action: String,
+        expected: f32,
+        tol: f32,
+    },
 }
 
 /// A complete scenario definition.
@@ -277,6 +286,30 @@ pub fn check_assertions(
                         ));
                         break;
                     }
+                }
+            }
+            Assertion::ActionEntryVelY {
+                action,
+                expected,
+                tol,
+            } => {
+                let Some(id) = resolve(action) else {
+                    failures.push(format!(
+                        "assertion failed: ActionEntryVelY{{action: \"{action}\"}}: unknown action \"{action}\""
+                    ));
+                    continue;
+                };
+                let Some(first) = frames.iter().find(|f| f.action == id.0) else {
+                    failures.push(format!(
+                        "assertion failed: ActionEntryVelY{{action: \"{action}\"}}: action never occurred"
+                    ));
+                    continue;
+                };
+                if (first.vel_y - expected).abs() > *tol {
+                    failures.push(format!(
+                        "assertion failed: ActionEntryVelY{{action: \"{action}\"}}: frame {} vel_y={:.1}, expected {:.1}±{:.1}",
+                        first.frame, first.vel_y, expected, tol
+                    ));
                 }
             }
         }
@@ -519,6 +552,33 @@ mod tests {
         let fails = check_assertions(&s, &[], &reg);
         assert_eq!(fails.len(), 1);
         assert!(fails[0].contains("unknown action"), "{}", fails[0]);
+    }
+
+    #[test]
+    fn assertions_entry_vel_y() {
+        use stepkit_core::actions::ActionRegistry;
+        let reg = ActionRegistry::sm64_style();
+        let s = scenario_with(vec![Assertion::ActionEntryVelY {
+            action: "SingleJump".into(),
+            expected: 42.0,
+            tol: 1.0,
+        }]);
+        let mut jump_frame = tframe(ActionId::JUMP.0, 0.0, 0.0, 1);
+        jump_frame.vel_y = 42.0;
+        let frames = vec![tframe(ActionId::IDLE.0, 0.0, 0.0, 0), jump_frame];
+        assert!(check_assertions(&s, &frames, &reg).is_empty());
+        // Wrong entry velocity fails.
+        let mut bad_frame = tframe(ActionId::JUMP.0, 0.0, 0.0, 1);
+        bad_frame.vel_y = 62.0;
+        let frames = vec![tframe(ActionId::IDLE.0, 0.0, 0.0, 0), bad_frame];
+        let fails = check_assertions(&s, &frames, &reg);
+        assert_eq!(fails.len(), 1);
+        assert!(fails[0].contains("vel_y=62.0"), "{}", fails[0]);
+        // Action never occurring fails.
+        let frames = vec![tframe(ActionId::IDLE.0, 0.0, 0.0, 0)];
+        let fails = check_assertions(&s, &frames, &reg);
+        assert_eq!(fails.len(), 1);
+        assert!(fails[0].contains("never occurred"), "{}", fails[0]);
     }
 
     #[test]

@@ -161,7 +161,7 @@ fn air_common(cx: &mut ActionCx, prev_buttons: u16, cfg: &AirConfig) -> Option<A
         cx.events.push(Event::WallHit {
             normal_yaw: crate::trig::atan2(out.wall_normal.x, out.wall_normal.z),
         });
-        cx.state.wall_kick_timer = 10; // spec: wall.kick_window (verify)
+        cx.state.wall_kick_timer = 5; // spec: wall.kick_window (verified: decomp act_air_hit_wall)
                                        // Speed-dependent wall response.
         let speed = (cx.state.vel.x * cx.state.vel.x + cx.state.vel.z * cx.state.vel.z).sqrt();
         let n = out.wall_normal;
@@ -853,14 +853,15 @@ pub fn enter_wall_kick(cx: &mut ActionCx, wall_normal: glam::Vec3) -> ActionResu
     enter_wall_kick_flight(cx, wall_normal, 62.0)
 }
 
-/// Water jump entry: vy = 62, forward speed raised to at least 15.
-/// (verified: decomp-derived)
+/// Water jump entry: vy = 42, forward speed raised to at least 15.
+/// (verified: decomp set_mario_action_airborne ACT_WATER_JUMP; the 62.0f set
+/// in check_water_jump is overwritten by the 42.0f transition assignment)
 pub fn enter_water_jump(cx: &mut ActionCx) -> ActionResult {
-    // spec: swim.jump_vertical / swim.jump_forward_min (verified: decomp-derived)
+    // spec: swim.jump_vertical / swim.jump_forward_min (verified: decomp set_mario_action_airborne)
     cx.state.forward_speed = cx.state.forward_speed.max(15.0);
-    set_air_velocity(cx, 62.0);
+    set_air_velocity(cx, 42.0);
     cx.timeline.slot = slot::WATER_JUMP;
-    cx.events.push(Event::Jumped { velocity_y: 62.0 });
+    cx.events.push(Event::Jumped { velocity_y: 42.0 });
     cx.goto(ActionId::WATER_JUMP, 0)
 }
 
