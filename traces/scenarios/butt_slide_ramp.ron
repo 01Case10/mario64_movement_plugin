@@ -35,4 +35,11 @@
         ),
     ],
     compare: GroundDefault,
+    asserts: [
+        ActionSeen(action: "ButtSlide"),
+        // The standstill-entry bug exited the slide after 1 frame before
+        // slope acceleration could build speed; the fixed behavior sustains
+        // ~35 frames.
+        ActionFramesAtLeast(action: "ButtSlide", min_frames: 20),
+    ],
 )

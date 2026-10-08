@@ -129,6 +129,7 @@ pub fn samples_to_scenario(
         camera: Camera::Fixed { yaw_deg: 0.0 },
         inputs,
         compare: CompareProfile::GroundDefault,
+        asserts: vec![],
     }
 }
 

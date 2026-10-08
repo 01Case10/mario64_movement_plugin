@@ -162,14 +162,11 @@ pub fn run_scenario(scenario: &Scenario, params: &MovementParams, produced_by: &
         face_yaw: Angle::from_degrees(scenario.start.yaw_deg),
         ..CharacterState::default()
     };
-    // Resolve the action name through the known built-ins.
-    state.action = match scenario.start.action.as_str() {
-        "Idle" => ActionId::IDLE,
-        "Walking" => ActionId::WALKING,
-        "Jump" => ActionId::JUMP,
-        "Freefall" => ActionId::FREEFALL,
-        _ => ActionId::IDLE,
-    };
+    // Resolve the action name through the registry (same resolution the
+    // semantic assertions use); unknown names fall back to Idle.
+    state.action = registry
+        .id_by_name(&scenario.start.action)
+        .unwrap_or(ActionId::IDLE);
     state.prev_action = state.action;
 
     let mut timeline = Timeline::default();
@@ -246,6 +243,7 @@ mod tests {
                 buttons: 0,
             }],
             compare: CompareProfile::GroundDefault,
+            asserts: vec![],
         }
     }
 

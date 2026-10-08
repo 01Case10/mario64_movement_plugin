@@ -47,4 +47,10 @@
         ),
     ],
     compare: AirDefault,
+    asserts: [
+        ActionSeen(action: "LedgeGrab"),
+        // Hang semantics: hands grip the 400 ledge top, feet dangle one
+        // body height (160) below at y=240.
+        DuringActionPosY(action: "LedgeGrab", expected: 240.0, tol: 5.0),
+    ],
 )

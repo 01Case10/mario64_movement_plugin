@@ -219,6 +219,14 @@ impl ActionRegistry {
     pub fn action_name(&self, id: ActionId) -> &'static str {
         self.get(id).map_or("<unknown>", |h| h.name())
     }
+
+    /// Look up an action ID by handler name (e.g. "LedgeGrab").
+    /// Used for scenario `start.action` and semantic assertions.
+    pub fn id_by_name(&self, name: &str) -> Option<ActionId> {
+        self.handlers
+            .iter()
+            .find_map(|(&id, h)| (h.name() == name).then_some(ActionId(id)))
+    }
 }
 
 impl Default for ActionRegistry {

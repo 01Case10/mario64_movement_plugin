@@ -44,19 +44,39 @@ pub fn diff(
         return Err("refusing to diff with non-faithful params".into());
     }
 
-    let result = match mode {
+    let (mut result, assert_frames) = match mode {
         CompareMode::FreeRunning => {
             let actual = run_scenario(&scenario, &params, "stepkit trace diff");
-            CompareResult::diff_frames(
+            let r = CompareResult::diff_frames(
                 &scenario.id,
                 mode,
                 &golden,
                 &actual.frames,
                 &ToleranceProfile::default(),
-            )
+            );
+            (r, actual.frames)
         }
-        CompareMode::TeacherForced => teacher_forced_diff(&scenario, &golden),
+        CompareMode::TeacherForced => {
+            let r = teacher_forced_diff(&scenario, &golden);
+            // Assertions need real multi-frame behavior (teacher-forced
+            // resets state every tick), so evaluate them against a free run.
+            let actual = run_scenario(&scenario, &params, "stepkit trace diff");
+            (r, actual.frames)
+        }
     };
+
+    // Semantic assertions from the scenario's `asserts` list, checked
+    // against the free-running trace. Failures fail the run so the
+    // release gate catches them.
+    let registry = stepkit_core::actions::ActionRegistry::sm64_style();
+    let assertion_failures =
+        stepkit_trace::scenario::check_assertions(&scenario, &assert_frames, &registry);
+    for f in &assertion_failures {
+        println!("{f}");
+    }
+    if !assertion_failures.is_empty() {
+        result.passed = false;
+    }
 
     println!("{}", render_markdown(&result));
     if let Some(path) = report_path {
