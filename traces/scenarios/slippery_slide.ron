@@ -1,0 +1,43 @@
+(
+    id: "slippery_slide",
+    tags: [
+        "ground",
+        "slide",
+        "surface",
+    ],
+    geometry: [
+        Box((
+            min: (-2000.0, -100.0, -2000.0),
+            max: (2000.0, 0.0, 2000.0),
+            kind: 0,
+        )),
+        Ramp((
+            origin: (0.0, 0.0, 0.0),
+            dir: (0.0, 1.0),
+            length: 400.0,
+            height: 350.0,
+            width: 400.0,
+            kind: 0,
+        )),
+    ],
+    start: (
+        pos: (0, 345, 390),
+        yaw_deg: 180.0,
+        action: "Idle",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        Press(
+            stick: (0, -80),
+            buttons: 0,
+        ),
+        Hold(
+            frames: 60,
+            stick: (0, -80),
+            buttons: 0,
+        ),
+    ],
+    compare: GroundDefault,
+)

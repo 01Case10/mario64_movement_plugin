@@ -1,15 +1,14 @@
 (
-    id: "dive_slide_rollout",
+    id: "quicksand",
     tags: [
-        "air",
-        "dive",
-        "slide",
+        "ground",
+        "quicksand",
     ],
     geometry: [
         Box((
             min: (-2000.0, -100.0, -2000.0),
             max: (2000.0, 0.0, 2000.0),
-            kind: 0,
+            kind: 2,
         )),
     ],
     start: (
@@ -22,28 +21,19 @@
     ),
     inputs: [
         Hold(
-            frames: 40,
+            frames: 60,
             stick: (0, 80),
             buttons: 0,
         ),
         Press(
             stick: (0, 80),
-            buttons: 2,
-        ),
-        Hold(
-            frames: 12,
-            stick: (0, 0),
-            buttons: 0,
-        ),
-        Press(
-            stick: (0, 0),
             buttons: 1,
         ),
         Hold(
-            frames: 45,
+            frames: 50,
             stick: (0, 0),
             buttons: 0,
         ),
     ],
-    compare: AirDefault,
+    compare: GroundDefault,
 )

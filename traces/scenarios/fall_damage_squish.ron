@@ -1,0 +1,31 @@
+(
+    id: "fall_damage_squish",
+    tags: [
+        "air",
+        "damage",
+        "squish",
+    ],
+    geometry: [
+        Box((
+            min: (-2000.0, -100.0, -2000.0),
+            max: (2000.0, 0.0, 2000.0),
+            kind: 0,
+        )),
+    ],
+    start: (
+        pos: (0, 1300, 0),
+        yaw_deg: 0.0,
+        action: "Freefall",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        Hold(
+            frames: 60,
+            stick: (0, 0),
+            buttons: 0,
+        ),
+    ],
+    compare: AirDefault,
+)
