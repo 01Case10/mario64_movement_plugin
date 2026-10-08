@@ -1,0 +1,13 @@
+// Animation timing manifest (the contract between gameplay and art).
+// Phase 6 derives the real slot list and frame counts from traces via
+// `stepkit trace summarize`. Slot ids are stable; gameplay timing comes
+// from here, never from animation files.
+TimingManifest(
+  fps: 30,
+  slots: [],
+  tolerances: ToleranceProfile(
+    event_frame_tolerance: 1,
+    in_place_travel: 2.0,
+    transition_pop_degrees: 8.0,
+  ),
+)
