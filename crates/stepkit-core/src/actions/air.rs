@@ -973,15 +973,48 @@ fn try_ledge_grab(cx: &mut ActionCx, wall_normal: glam::Vec3) -> Option<ActionRe
         return None;
     }
     into_wall = into_wall.normalize();
-    // spec: ledge.search_inward / ledge.search_up (verified)
+    // spec: ledge.search_inward / ledge.search_up (verified) — the search
+    // goes 60 into the wall to FIND the ledge top...
     let search = cx.state.pos + into_wall * 60.0 + glam::Vec3::new(0.0, 160.0, 0.0);
     let floor = cx.world.find_floor(search, 0.0)?;
+    // ...but Mario HANGS 30 units outside the wall face so his body never
+    // intersects it. (The decomp hangs him 10 inside, which our renderer
+    // shows as clipping; the hands-on-edge visual is preserved because the
+    // grab pose reaches forward.) Find the face with a tight probe at ledge
+    // height, searching BOTH directions: the grab runs before wall
+    // resolution, so pos may be inside the wall (forward-only probing then
+    // misses the face we came through), and for floating ledges the face
+    // only exists up at the ledge (feet-height probing misses it entirely).
+    let probe_y = floor.y - 10.0;
+    let probe_base = glam::Vec3::new(cx.state.pos.x, probe_y, cx.state.pos.z);
+    let mut fwd_d = 0.0;
+    while fwd_d < 150.0
+        && !cx
+            .world
+            .wall_probe(probe_base + into_wall * fwd_d, 2.0)
+    {
+        fwd_d += 2.0;
+    }
+    let mut back_d = 0.0;
+    while back_d < 150.0
+        && !cx
+            .world
+            .wall_probe(probe_base - into_wall * back_d, 2.0)
+    {
+        back_d += 2.0;
+    }
+    // Hang 30 outside the nearest face.
+    let hang_xz = if fwd_d <= back_d {
+        probe_base + into_wall * (fwd_d - 30.0)
+    } else {
+        probe_base - into_wall * (back_d + 30.0)
+    };
     // Grab: snap so Mario's HANDS are at the ledge top, body hanging below:
     // feet end up one body-height under the grabbed floor. (Snapping the
     // feet to floor.y leaves him standing ON the ledge in the grab pose.)
     // Face the wall, kill velocity.
     let hang = cx.params.height;
-    cx.state.pos = glam::Vec3::new(search.x, floor.y - hang, search.z);
+    cx.state.pos = glam::Vec3::new(hang_xz.x, floor.y - hang, hang_xz.z);
     cx.state.vel = glam::Vec3::ZERO;
     cx.state.forward_speed = 0.0;
     cx.state.face_yaw = crate::trig::atan2(into_wall.x, into_wall.z);
@@ -1211,22 +1244,27 @@ impl ActionHandler for LedgeGrab {
     }
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
         // Release: the ledge floor he's hanging from got too steep.
-        // Probe at hand height: his feet dangle a full body-height below
-        // the grab point, so a feet-level probe would miss the ledge.
+        // Probe at hand height over the LEDGE (30 inside the wall): the hang
+        // point itself is 30 outside the wall, so a probe there would find
+        // the ground far below instead of the ledge. Feet dangle a full
+        // body-height below the grab point, so a feet-level probe would miss
+        // the ledge.
         // spec: ledge.release_slope_y (decomp-derived)
-        let hands = cx.state.pos + glam::Vec3::new(0.0, cx.params.height, 0.0);
-        if let Some(f) = cx.world.find_floor(hands, 1.0) {
+        let (fx, fz) = cx.forward_xz();
+        let over_ledge =
+            cx.state.pos + glam::Vec3::new(fx * 30.0, cx.params.height, fz * 30.0);
+        if let Some(f) = cx.world.find_floor(over_ledge, 1.0) {
             if f.normal.y < 0.9063 {
                 cx.timeline.slot = slot::FREEFALL;
                 return cx.goto(ActionId::FREEFALL, 0);
             }
         }
         // A: fast climb, needs 160 units of headroom above the ledge.
-        // Probe from the hands (the grab point): the feet dangle a full
+        // Probe from over the ledge at hand height: the feet dangle a full
         // body-height below, so a feet-level probe would see the ledge's
         // own underside as a ceiling and wrongly block the climb.
         if cx.pressed(buttons::A, prev_buttons)
-            && cx.world.find_ceiling(hands, 160.0).is_none()
+            && cx.world.find_ceiling(over_ledge, 160.0).is_none()
         {
             return cx.goto(ActionId::LEDGE_CLIMB_FAST, 0);
         }
@@ -1254,7 +1292,7 @@ impl ActionHandler for LedgeGrab {
 
 /// Let go of the ledge: drop with forward speed -8 (away from the wall,
 /// since the facing points at the wall). The grab already snapped Mario to
-/// the ledge point 60 units out from the wall, so the position stands.
+/// the ledge point 30 units out from the wall, so the position stands.
 fn ledge_let_go(cx: &mut ActionCx) -> ActionResult {
     cx.state.forward_speed = -8.0; // spec: ledge.drop_speed (verified)
     cx.state.vel = glam::Vec3::ZERO;
@@ -1284,26 +1322,40 @@ fn ledge_pull_up(cx: &mut ActionCx, distance: f32) -> ActionResult {
 ///
 /// The decomp pins m->pos to the ledge top for the whole climb and lets the
 /// climb animation's root motion do the visual rise; our procedural character
-/// has no root motion, so the sim itself rises the body one full body-height
-/// over the 8 frames (the exact distance the grab hung it below the edge).
-/// No horizontal travel during the climb (matches the decomp: its climb does
-/// not move m->pos horizontally); the +14 forward nudge at the end is the
-/// decomp's climb_up_ledge. Traveling horizontally at hang height drove the
-/// head/shoulders through the ledge block.
+/// has no root motion, so the sim itself moves the body. Up first, then over:
+/// rise to the ledge top at the hang xz (30 outside the wall, so nothing
+/// intersects), then travel forward at the top level onto the ledge. Never
+/// moves horizontally while below the top — that's what drove the body
+/// through the ledge. The +14 forward nudge at the end is the decomp's
+/// climb_up_ledge.
 pub struct LedgeClimbFast;
 impl ActionHandler for LedgeClimbFast {
     fn name(&self) -> &'static str {
         "LedgeClimbFast"
     }
     fn tick(&self, cx: &mut ActionCx, _prev_buttons: u16) -> ActionResult {
-        // Rise one body-height over the 8-frame climb: the hands stay on the
-        // edge while the body comes up and over it.
-        cx.state.pos.y += cx.params.height / 8.0;
-        cx.state.vel = glam::Vec3::ZERO;
-        cx.timeline.slot = slot::LEDGE_GRAB;
+        // Pull-up check first: the timer is already incremented when the
+        // tick runs, so checking after the motion would double-move.
         if cx.state.action_timer >= 8 {
             return ledge_pull_up(cx, 14.0);
         }
+        // Up first, then over: rise to the ledge top, then travel forward
+        // at the top level. Never moves horizontally while below the top —
+        // that's what drove the body through the ledge. (Branch on height,
+        // not the timer, so the phase change is exact.)
+        let top = cx
+            .state
+            .floor_y
+            .unwrap_or(cx.state.pos.y + cx.params.height);
+        if cx.state.pos.y < top - 0.5 {
+            cx.state.pos.y = (cx.state.pos.y + 32.0).min(top);
+        } else {
+            let (fx, fz) = cx.forward_xz();
+            cx.state.pos.x += fx * 20.0;
+            cx.state.pos.z += fz * 20.0;
+        }
+        cx.state.vel = glam::Vec3::ZERO;
+        cx.timeline.slot = slot::LEDGE_GRAB;
         ActionResult::Stay
     }
 }
@@ -1328,8 +1380,10 @@ impl ActionHandler for LedgeClimbSlow1 {
 }
 
 /// Slow ledge climb, part 2: at 11 frames in (28 total) any input pulls
-/// up 14 units forward onto the ledge. A long no-input stall falls back
-/// to idle so the character can never soft-lock mid-climb.
+/// up onto the ledge. The pull-up travels 54 forward: the hang is 30 outside
+/// the wall, so 54 lands 24 inside, on the ledge (matching the fast climb's
+/// end point). A long no-input stall falls back to idle so the character
+/// can never soft-lock mid-climb.
 pub struct LedgeClimbSlow2;
 impl ActionHandler for LedgeClimbSlow2 {
     fn name(&self) -> &'static str {
@@ -1338,10 +1392,10 @@ impl ActionHandler for LedgeClimbSlow2 {
     fn tick(&self, cx: &mut ActionCx, _prev_buttons: u16) -> ActionResult {
         cx.timeline.slot = slot::LEDGE_GRAB;
         if cx.state.action_timer >= 11 && (cx.input.stick_held() || cx.input.buttons != 0) {
-            return ledge_pull_up(cx, 14.0);
+            return ledge_pull_up(cx, 54.0);
         }
         if cx.state.action_timer >= 120 {
-            return ledge_pull_up(cx, 14.0);
+            return ledge_pull_up(cx, 54.0);
         }
         ActionResult::Stay
     }
