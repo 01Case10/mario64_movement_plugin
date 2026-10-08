@@ -34,6 +34,10 @@ pub mod slot {
     pub const STOMACH_SLIDE: u32 = 25;
     pub const SLIDE_KICK_SLIDE: u32 = 26;
     pub const FINISH_TURN: u32 = 27;
+    pub const PUNCH: u32 = 33;
+    pub const MOVE_PUNCH: u32 = 34;
+    pub const GROUND_KB: u32 = 35;
+    pub const GROUND_BONK: u32 = 36;
 }
 
 /// Shared ground-tick prelude: refresh the floor query. Returns `Some(result)`
@@ -169,6 +173,7 @@ fn apply_ground_move_with(cx: &mut ActionCx, vx: f32, vz: f32) {
     }
     if out.wall_hit {
         cx.state.wall_hit = true;
+        cx.state.wall_normal = out.wall_normal;
         cx.events.push(Event::WallHit {
             normal_yaw: crate::trig::atan2(out.wall_normal.x, out.wall_normal.z),
         });
@@ -265,6 +270,19 @@ fn enter_jump_or_steep(cx: &mut ActionCx) -> ActionResult {
     }
 }
 
+/// B-button dispatch on the ground: dive at speed >= 29 with a hard stick
+/// shove (raw mag > 48); otherwise punch -- the moving punch at speed >= 8,
+/// the stationary punch below it. (decomp-derived B routing)
+fn ground_b_action(cx: &mut ActionCx) -> ActionResult {
+    if cx.state.forward_speed >= 29.0 && cx.raw_magnitude() > 48.0 {
+        return enter_dive(cx, true);
+    }
+    if cx.state.forward_speed >= 8.0 {
+        return enter_move_punching(cx);
+    }
+    enter_punching(cx)
+}
+
 /// Idle: standing still on the ground.
 pub struct Idle;
 impl ActionHandler for Idle {
@@ -291,6 +309,10 @@ impl ActionHandler for Idle {
         // Crouch: Z held. (wiki:Crouching@17805)
         if cx.pressed(buttons::Z, prev_buttons) {
             return enter_crouch(cx);
+        }
+        // Punch: B on the ground (dive only at speed, handled inside).
+        if cx.pressed(buttons::B, prev_buttons) {
+            return ground_b_action(cx);
         }
         if cx.input.stick_held() {
             return enter_walking(cx);
@@ -327,12 +349,9 @@ impl ActionHandler for Walking {
         if cx.pressed(buttons::A, prev_buttons) {
             return enter_jump_or_steep(cx);
         }
-        // Dive: B with speed >= 29 and raw stick mag > 48.
-        if cx.pressed(buttons::B, prev_buttons)
-            && cx.state.forward_speed >= 29.0
-            && cx.raw_magnitude() > 48.0
-        {
-            return enter_dive(cx, true);
+        // B: dive at speed with a hard stick shove, otherwise punch.
+        if cx.pressed(buttons::B, prev_buttons) {
+            return ground_b_action(cx);
         }
         // Crouch: Z while moving -> crouch slide; Z at rest -> crouch.
         if cx.pressed(buttons::Z, prev_buttons) {
@@ -456,12 +475,9 @@ impl ActionHandler for Braking {
         if cx.pressed(buttons::A, prev_buttons) {
             return enter_jump_or_steep(cx);
         }
-        // Dive: B with speed >= 29 and raw stick mag > 48.
-        if cx.pressed(buttons::B, prev_buttons)
-            && cx.state.forward_speed >= 29.0
-            && cx.raw_magnitude() > 48.0
-        {
-            return enter_dive(cx, true);
+        // B: dive at speed with a hard stick shove, otherwise punch.
+        if cx.pressed(buttons::B, prev_buttons) {
+            return ground_b_action(cx);
         }
         // Crouch: Z while moving -> crouch slide; Z at rest -> crouch.
         if cx.pressed(buttons::Z, prev_buttons) {
@@ -509,12 +525,9 @@ impl ActionHandler for Decelerating {
         if cx.pressed(buttons::A, prev_buttons) {
             return enter_jump_or_steep(cx);
         }
-        // Dive: B with speed >= 29 and raw stick mag > 48.
-        if cx.pressed(buttons::B, prev_buttons)
-            && cx.state.forward_speed >= 29.0
-            && cx.raw_magnitude() > 48.0
-        {
-            return enter_dive(cx, true);
+        // B: dive at speed with a hard stick shove, otherwise punch.
+        if cx.pressed(buttons::B, prev_buttons) {
+            return ground_b_action(cx);
         }
         // Crouch: Z while moving -> crouch slide; Z at rest -> crouch.
         if cx.pressed(buttons::Z, prev_buttons) {
@@ -715,6 +728,10 @@ impl ActionHandler for Crouch {
         }
         if cx.pressed(buttons::A, prev_buttons) {
             return enter_backflip(cx);
+        }
+        // B: punch from the crouch (speed is zero, so the stationary punch).
+        if cx.pressed(buttons::B, prev_buttons) {
+            return ground_b_action(cx);
         }
         // Z released -> stop crouching.
         if cx.input.buttons & buttons::Z == 0 {
@@ -978,6 +995,9 @@ impl ActionHandler for ButtSlide {
             return cx.goto(ActionId::IDLE, 0);
         }
         apply_ground_move_with(cx, cx.state.slide_vel_x, cx.state.slide_vel_z);
+        if cx.state.wall_hit {
+            return slide_bonk(cx);
+        }
         cx.timeline.slot = slot::BUTT_SLIDE;
         ActionResult::Stay
     }
@@ -1010,6 +1030,9 @@ impl ActionHandler for StomachSlide {
             return cx.goto(ActionId::IDLE, 0);
         }
         apply_ground_move_with(cx, cx.state.slide_vel_x, cx.state.slide_vel_z);
+        if cx.state.wall_hit {
+            return slide_bonk(cx);
+        }
         cx.timeline.slot = slot::STOMACH_SLIDE;
         ActionResult::Stay
     }
@@ -1038,6 +1061,9 @@ impl ActionHandler for DiveSlide {
             return cx.goto(ActionId::IDLE, 0);
         }
         apply_ground_move_with(cx, cx.state.slide_vel_x, cx.state.slide_vel_z);
+        if cx.state.wall_hit {
+            return slide_bonk(cx);
+        }
         cx.timeline.slot = slot::DIVE_SLIDE;
         ActionResult::Stay
     }
@@ -1070,8 +1096,9 @@ impl ActionHandler for CrouchSlide {
                 if speed >= 10.0 {
                     return enter_slide_kick(cx);
                 }
-                cx.timeline.slot = slot::CROUCH;
-                return cx.goto(ActionId::CROUCH, 0);
+                // Slow crouch-slide B: moving punch (replaces the old
+                // drop-to-crouch mapping now that punching exists).
+                return enter_move_punching(cx);
             }
         } else if cx.pressed(buttons::A, prev_buttons) {
             return enter_jump(cx);
@@ -1082,14 +1109,17 @@ impl ActionHandler for CrouchSlide {
             return cx.goto(ActionId::CROUCH, 0);
         }
         apply_ground_move_with(cx, cx.state.slide_vel_x, cx.state.slide_vel_z);
+        if cx.state.wall_hit {
+            return slide_bonk(cx);
+        }
         cx.timeline.slot = slot::CROUCH_SLIDE;
         ActionResult::Stay
     }
 }
 
 /// Slide-kick slide: ground continuation of an airborne slide kick.
-/// A rolls forward; a wall stops into a decel (Phase E routes bonks to
-/// BACKWARD_GROUND_KB); stopping ends crouching.
+/// A rolls forward; a wall bonks into the backwards ground knockback
+/// (with a reflection); stopping ends crouching.
 pub struct SlideKickSlide;
 impl ActionHandler for SlideKickSlide {
     fn name(&self) -> &'static str {
@@ -1105,8 +1135,8 @@ impl ActionHandler for SlideKickSlide {
         let speed = update_slide_vector(cx);
         apply_ground_move_with(cx, cx.state.slide_vel_x, cx.state.slide_vel_z);
         if cx.state.wall_hit {
-            cx.timeline.slot = slot::DECEL;
-            return cx.goto(ActionId::DECELERATING, 0);
+            // spec: knockback.bonk_speed_threshold (decomp-derived)
+            return enter_ground_bonk(cx, ActionId::BACKWARD_GROUND_KB);
         }
         if speed < 1.0 {
             cx.timeline.slot = slot::CROUCH;
@@ -1119,8 +1149,7 @@ impl ActionHandler for SlideKickSlide {
 
 /// Waist-deep in quicksand (depth > 30; v1's shallow cap of 10 keeps this
 /// reachable only via deep quicksand or direct state setup). Can still
-/// jump (A/B; B becomes the punch in Phase E) and crouch (Z). Depth below
-/// 30 exits back to idle.
+/// jump (A), punch (B), and crouch (Z). Depth below 30 exits to idle.
 pub struct InQuicksand;
 impl ActionHandler for InQuicksand {
     fn name(&self) -> &'static str {
@@ -1134,8 +1163,12 @@ impl ActionHandler for InQuicksand {
             cx.timeline.slot = slot::IDLE;
             return cx.goto(ActionId::IDLE, 0);
         }
-        if cx.pressed(buttons::A, prev_buttons) || cx.pressed(buttons::B, prev_buttons) {
+        if cx.pressed(buttons::A, prev_buttons) {
             return enter_jump(cx);
+        }
+        // B: punch (waist-deep, so the stationary punch).
+        if cx.pressed(buttons::B, prev_buttons) {
+            return ground_b_action(cx);
         }
         if cx.pressed(buttons::Z, prev_buttons) {
             return enter_crouch(cx);
@@ -1173,6 +1206,295 @@ impl ActionHandler for QuicksandJumpLand {
             return cx.goto(ActionId::IDLE, 0);
         }
         cx.timeline.slot = slot::LAND;
+        ActionResult::Stay
+    }
+}
+
+// ---------------------------------------------------------------- punch ---
+
+/// Punch combo stage durations in frames: punch1, punch2, kick.
+/// (decomp-derived combo timing)
+const PUNCH_STAGE_FRAMES: [u32; 3] = [8, 8, 12];
+
+/// Stationary punch entry (B on the ground at speed < 8).
+pub fn enter_punching(cx: &mut ActionCx) -> ActionResult {
+    cx.timeline.slot = slot::PUNCH;
+    cx.goto(ActionId::PUNCHING, 0)
+}
+
+/// Moving punch entry (B on the ground at speed >= 8, or the mapped
+/// crouch-slide case). Momentum is preserved into the combo.
+pub fn enter_move_punching(cx: &mut ActionCx) -> ActionResult {
+    cx.timeline.slot = slot::MOVE_PUNCH;
+    cx.goto(ActionId::MOVE_PUNCHING, 0)
+}
+
+/// Shared punch-combo body. `action_state` is the combo stage (0, 1, 2).
+/// Each stage lasts its frame budget; B during a stage chains to the next
+/// (the timer restarts); at a stage's end without B the combo finishes --
+/// to IDLE, or back to WALKING for the moving punch when the stick is held.
+/// A on the very first frame of punch1 becomes a jump kick instead.
+/// Facing is locked to the entry facing (no turning while punching).
+/// Hitbox timing (frames 2+ per stage) is documented only: no enemies
+/// exist in the sim, so no hitboxes are simulated.
+fn punch_tick(cx: &mut ActionCx, prev_buttons: u16, move_punch: bool) -> ActionResult {
+    if let Some(r) = ground_prelude(cx) {
+        return r;
+    }
+    if let Some(r) = check_slide(cx) {
+        return r;
+    }
+    let stage = cx.state.action_state.min(2) as usize;
+    // spec: combat.punch_stage_frames (decomp-derived)
+    let duration = PUNCH_STAGE_FRAMES[stage];
+    // A on the first frame of punch1 -> jump kick.
+    if stage == 0 && cx.state.action_timer == 1 && cx.pressed(buttons::A, prev_buttons) {
+        return super::air::enter_jump_kick(cx);
+    }
+    // B chains the combo: next stage, timer restarted.
+    if stage < 2 && cx.pressed(buttons::B, prev_buttons) {
+        let id = cx.state.action;
+        let r = cx.goto(id, 0);
+        cx.state.action_state = stage as u32 + 1;
+        if move_punch {
+            cx.timeline.slot = slot::MOVE_PUNCH;
+        } else {
+            cx.timeline.slot = slot::PUNCH;
+        }
+        return r;
+    }
+    // Speed decays; the facing stays locked.
+    // spec: combat.punch_decel (decomp-derived: slope decel 0.5)
+    cx.state.forward_speed = approach_zero(cx.state.forward_speed, 0.5) + slope_speed_delta(cx);
+    apply_ground_move(cx);
+    if cx.state.action_timer >= duration {
+        if move_punch && cx.input.stick_held() {
+            return enter_walking(cx);
+        }
+        cx.timeline.slot = slot::IDLE;
+        return cx.goto(ActionId::IDLE, 0);
+    }
+    cx.timeline.slot = if move_punch {
+        slot::MOVE_PUNCH
+    } else {
+        slot::PUNCH
+    };
+    ActionResult::Stay
+}
+
+/// Punching: the stationary 3-hit combo (punch, punch, kick).
+pub struct Punching;
+impl ActionHandler for Punching {
+    fn name(&self) -> &'static str {
+        "Punching"
+    }
+    fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
+        punch_tick(cx, prev_buttons, false)
+    }
+}
+
+/// MovePunching: the same combo while moving; momentum is kept and the
+/// combo hands back to walking when the stick is still held.
+pub struct MovePunching;
+impl ActionHandler for MovePunching {
+    fn name(&self) -> &'static str {
+        "MovePunching"
+    }
+    fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
+        punch_tick(cx, prev_buttons, true)
+    }
+}
+
+// ------------------------------------------------------ ground knockback ---
+
+/// Ground-knockback entry: clamp the entry speed to +/-32 (the reference
+/// clamps knockback entry speeds) and enter the knockback action.
+pub fn enter_ground_kb(cx: &mut ActionCx, id: ActionId) -> ActionResult {
+    // spec: knockback.entry_speed_clamp (decomp-derived)
+    cx.state.forward_speed = cx.state.forward_speed.clamp(-32.0, 32.0);
+    cx.timeline.slot = slot::GROUND_KB;
+    cx.goto(id, 0)
+}
+
+/// Shared ground-knockback body: landing-style decel (0.9/frame) for
+/// `frames` frames, then idle. Walking off the floor routes to the matching
+/// air knockback (preserving drift) instead of a plain freefall.
+/// Damage invulnerability is not modeled (no damage sources target the
+/// knockback window yet); noted for the health system.
+fn ground_kb_tick(
+    cx: &mut ActionCx,
+    _prev_buttons: u16,
+    frames: u32,
+    air_kb: ActionId,
+) -> ActionResult {
+    if let Some(r) = ground_prelude(cx) {
+        // Off the floor -> the matching air knockback, not a freefall.
+        if matches!(r, ActionResult::Goto(ActionId::FREEFALL, _)) {
+            return cx.goto(air_kb, 0);
+        }
+        return r;
+    }
+    if let Some(r) = check_slide(cx) {
+        return r;
+    }
+    // spec: knockback.ground_decel (decomp-derived: landing accel 0.9)
+    cx.state.forward_speed = approach_zero(cx.state.forward_speed, 0.9) + slope_speed_delta(cx);
+    apply_ground_move(cx);
+    if cx.state.action_timer >= frames {
+        cx.timeline.slot = slot::IDLE;
+        return cx.goto(ActionId::IDLE, 0);
+    }
+    cx.timeline.slot = slot::GROUND_KB;
+    ActionResult::Stay
+}
+
+macro_rules! ground_kb_action {
+    ($name:ident, $label:literal, $frames:expr, $air_kb:expr) => {
+        pub struct $name;
+        impl ActionHandler for $name {
+            fn name(&self) -> &'static str {
+                $label
+            }
+            fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
+                ground_kb_tick(cx, prev_buttons, $frames, $air_kb)
+            }
+        }
+    };
+}
+
+// Decel windows from the decomp knockback family (behavioral reference).
+// spec: knockback.ground_frames (decomp-derived)
+ground_kb_action!(
+    BackwardGroundKb,
+    "BackwardGroundKb",
+    22,
+    ActionId::BACKWARD_AIR_KB
+);
+ground_kb_action!(
+    ForwardGroundKb,
+    "ForwardGroundKb",
+    20,
+    ActionId::FORWARD_AIR_KB
+);
+ground_kb_action!(
+    HardBackwardGroundKb,
+    "HardBackwardGroundKb",
+    43,
+    ActionId::BACKWARD_AIR_KB
+);
+ground_kb_action!(
+    HardForwardGroundKb,
+    "HardForwardGroundKb",
+    21,
+    ActionId::FORWARD_AIR_KB
+);
+ground_kb_action!(
+    SoftBackwardGroundKb,
+    "SoftBackwardGroundKb",
+    100,
+    ActionId::BACKWARD_AIR_KB
+);
+ground_kb_action!(
+    SoftForwardGroundKb,
+    "SoftForwardGroundKb",
+    100,
+    ActionId::FORWARD_AIR_KB
+);
+
+/// Ground-bonk entry: reflect the slide vector across the wall normal,
+/// mirror the facing across the wall plane (the character turns to face
+/// the bounce direction), clamp the speed to 32, and enter `id`
+/// (GROUND_BONK from slides, or the backwards ground knockback from a
+/// slide-kick slide wall hit).
+pub fn enter_ground_bonk(cx: &mut ActionCx, id: ActionId) -> ActionResult {
+    let n = cx.state.wall_normal;
+    let dot = cx.state.slide_vel_x * n.x + cx.state.slide_vel_z * n.z;
+    cx.state.slide_vel_x -= 2.0 * dot * n.x;
+    cx.state.slide_vel_z -= 2.0 * dot * n.z;
+    // Mirror the facing across the wall plane: reflect the facing vector
+    // the same way as the velocity, then take its yaw.
+    let (fx, fz) = (
+        crate::trig::sin(cx.state.face_yaw),
+        crate::trig::cos(cx.state.face_yaw),
+    );
+    let fdot = fx * n.x + fz * n.z;
+    let rx = fx - 2.0 * fdot * n.x;
+    let rz = fz - 2.0 * fdot * n.z;
+    cx.state.face_yaw = crate::trig::atan2(rx, rz);
+    let speed = (cx.state.slide_vel_x * cx.state.slide_vel_x
+        + cx.state.slide_vel_z * cx.state.slide_vel_z)
+        .sqrt()
+        // spec: knockback.entry_speed_clamp (decomp-derived)
+        .min(32.0);
+    if speed > 1e-4 {
+        let k = speed
+            / (cx.state.slide_vel_x * cx.state.slide_vel_x
+                + cx.state.slide_vel_z * cx.state.slide_vel_z)
+                .sqrt()
+                .max(1e-4);
+        cx.state.slide_vel_x *= k;
+        cx.state.slide_vel_z *= k;
+    }
+    // After the mirror the motion runs along the facing.
+    cx.state.forward_speed = speed;
+    cx.timeline.slot = slot::GROUND_BONK;
+    cx.goto(id, 0)
+}
+
+/// Slide wall-hit routing (the reference `slide_bonk`): impact speed above
+/// 16 -> GROUND_BONK with a reflection; at or below 16 the slide stops dead
+/// into DECELERATING. (decomp-derived)
+fn slide_bonk(cx: &mut ActionCx) -> ActionResult {
+    let speed = (cx.state.slide_vel_x * cx.state.slide_vel_x
+        + cx.state.slide_vel_z * cx.state.slide_vel_z)
+        .sqrt();
+    // spec: knockback.bonk_speed_threshold (decomp-derived)
+    if speed > 16.0 {
+        enter_ground_bonk(cx, ActionId::GROUND_BONK)
+    } else {
+        cx.state.forward_speed = 0.0;
+        cx.state.slide_vel_x = 0.0;
+        cx.state.slide_vel_z = 0.0;
+        cx.state.vel.x = 0.0;
+        cx.state.vel.z = 0.0;
+        cx.timeline.slot = slot::DECEL;
+        cx.goto(ActionId::DECELERATING, 0)
+    }
+}
+
+/// GroundBonk: the fast slide wall-hit outcome. The reflected slide vector
+/// (captured at entry) decays toward zero; the facing stays mirrored.
+/// 32 frames, then idle.
+pub struct GroundBonk;
+impl ActionHandler for GroundBonk {
+    fn name(&self) -> &'static str {
+        "GroundBonk"
+    }
+    fn tick(&self, cx: &mut ActionCx, _prev_buttons: u16) -> ActionResult {
+        if let Some(r) = ground_prelude(cx) {
+            if matches!(r, ActionResult::Goto(ActionId::FREEFALL, _)) {
+                return cx.goto(ActionId::BACKWARD_AIR_KB, 0);
+            }
+            return r;
+        }
+        // Decay the reflected slide vector toward zero (landing-style).
+        let speed = (cx.state.slide_vel_x * cx.state.slide_vel_x
+            + cx.state.slide_vel_z * cx.state.slide_vel_z)
+            .sqrt();
+        let nspeed = approach_zero(speed, 0.9);
+        if speed > 1e-4 {
+            let k = nspeed / speed;
+            cx.state.slide_vel_x *= k;
+            cx.state.slide_vel_z *= k;
+        }
+        cx.state.forward_speed = nspeed;
+        apply_ground_move_with(cx, cx.state.slide_vel_x, cx.state.slide_vel_z);
+        // spec: knockback.ground_bonk_frames (decomp-derived)
+        if cx.state.action_timer >= 32 {
+            cx.timeline.slot = slot::IDLE;
+            return cx.goto(ActionId::IDLE, 0);
+        }
+        cx.timeline.slot = slot::GROUND_BONK;
         ActionResult::Stay
     }
 }

@@ -164,6 +164,39 @@ impl ActionId {
     /// Slow ledge climb, part 2.
     /// spec: actions.ledge_climb_slow_2 (verified: decomp ACT_LEDGE_CLIMB_SLOW_2)
     pub const LEDGE_CLIMB_SLOW_2: ActionId = ActionId(0x0000054D);
+    /// Stationary punch: B on the ground at speed < 8. Three-hit combo
+    /// (punch, punch, kick) chained by B; combo stage in action_state.
+    /// spec: actions.punching (verified: decomp ACT_PUNCHING)
+    pub const PUNCHING: ActionId = ActionId(0x00800380);
+    /// Moving punch: B on the ground at speed >= 8. Same combo, keeps
+    /// momentum; ends walking if the stick is held.
+    /// spec: actions.move_punching (verified: decomp ACT_MOVE_PUNCHING)
+    pub const MOVE_PUNCHING: ActionId = ActionId(0x00800457);
+    /// Jump kick: B in slow air, or A on the first punch frame. vy = 20.
+    /// spec: actions.jump_kick (verified: decomp ACT_JUMP_KICK)
+    pub const JUMP_KICK: ActionId = ActionId(0x018008AC);
+    /// Backwards ground knockback: wall bonk / air-KB landing outcome.
+    /// spec: actions.backward_ground_kb (verified: decomp ACT_BACKWARD_GROUND_KB)
+    pub const BACKWARD_GROUND_KB: ActionId = ActionId(0x00020462);
+    /// Forwards ground knockback.
+    /// spec: actions.forward_ground_kb (verified: decomp ACT_FORWARD_GROUND_KB)
+    pub const FORWARD_GROUND_KB: ActionId = ActionId(0x00020463);
+    /// Hard backwards ground knockback (arg 1 = hard from the air).
+    /// spec: actions.hard_backward_ground_kb (verified: decomp)
+    pub const HARD_BACKWARD_GROUND_KB: ActionId = ActionId(0x00020460);
+    /// Hard forwards ground knockback (arg 1 = hard from the air).
+    /// spec: actions.hard_forward_ground_kb (verified: decomp)
+    pub const HARD_FORWARD_GROUND_KB: ActionId = ActionId(0x00020461);
+    /// Soft backwards ground knockback (from a soft-bonk landing).
+    /// spec: actions.soft_backward_ground_kb (verified: decomp)
+    pub const SOFT_BACKWARD_GROUND_KB: ActionId = ActionId(0x00020464);
+    /// Soft forwards ground knockback (from a soft-bonk landing).
+    /// spec: actions.soft_forward_ground_kb (verified: decomp)
+    pub const SOFT_FORWARD_GROUND_KB: ActionId = ActionId(0x00020465);
+    /// Ground bonk: fast slide wall-hit outcome; reflected slide vector
+    /// decays over 32 frames.
+    /// spec: actions.ground_bonk (verified: decomp ACT_GROUND_BONK)
+    pub const GROUND_BONK: ActionId = ActionId(0x00020466);
 
     /// Custom action IDs start here; the registry enforces the range.
     pub const CUSTOM_BASE: u32 = 0x0100_0000;
