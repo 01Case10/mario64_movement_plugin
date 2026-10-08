@@ -12,24 +12,24 @@
             kind: 0,
         )),
         Box((
-            min: (-2000.0, -100.0, 1000.0),
+            min: (-2000.0, -100.0, 1600.0),
             max: (2000.0, 0.0, 2000.0),
             kind: 0,
         )),
         Box((
             min: (-2000.0, -100.0, 200.0),
-            max: (-400.0, 0.0, 1000.0),
+            max: (-400.0, 0.0, 1600.0),
             kind: 0,
         )),
         Box((
             min: (400.0, -100.0, 200.0),
-            max: (2000.0, 0.0, 1000.0),
+            max: (2000.0, 0.0, 1600.0),
             kind: 0,
         )),
         // Pool floor.
         Box((
             min: (-400.0, -400.0, 200.0),
-            max: (400.0, -300.0, 1000.0),
+            max: (400.0, -300.0, 1600.0),
             kind: 0,
         )),
     ],
@@ -39,7 +39,7 @@
             min_x: -400.0,
             max_x: 400.0,
             min_z: 200.0,
-            max_z: 1000.0,
+            max_z: 1600.0,
         ),
     ],
     start: (
@@ -51,31 +51,52 @@
         yaw_deg: 0.0,
     ),
     inputs: [
+        // Walk to the pool edge and fall in (stick up = fast walk).
         Hold(
             frames: 40,
             stick: (0, 80),
             buttons: 0,
         ),
+        // Fall, plunge (20f), recovery (10f), then tread; gentle stick_up
+        // (pitch 0.5) rides just under the surface without breaching
+        // (breach needs pitch > 0.7).
+        Hold(
+            frames: 35,
+            stick: (0, 40),
+            buttons: 0,
+        ),
+        // A tap: breaststroke (stick 40 < 60, so no water jump).
         Press(
-            stick: (0, 80),
+            stick: (0, 40),
             buttons: 1,
         ),
+        // Stroke runs 14f -> glide.
         Hold(
-            frames: 30,
-            stick: (0, 80),
-            buttons: 0,
-        ),
-        Hold(
-            frames: 60,
+            frames: 14,
             stick: (0, 40),
             buttons: 0,
         ),
+        // A pressed early in the glide (frame 1): no transition, A held.
         Press(
             stick: (0, 40),
-            buttons: 2,
+            buttons: 1,
         ),
+        // Keep A held: glide runs out (15f) -> recovery (10f) -> idle with
+        // A held -> flutter kick.
         Hold(
-            frames: 40,
+            frames: 25,
+            stick: (0, 40),
+            buttons: 1,
+        ),
+        // Flutter kick with A held: speed approaches 12.
+        Hold(
+            frames: 15,
+            stick: (0, 40),
+            buttons: 1,
+        ),
+        // Release A: glide with the chain bonus, then decay.
+        Hold(
+            frames: 12,
             stick: (0, 40),
             buttons: 0,
         ),

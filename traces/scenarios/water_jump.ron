@@ -1,0 +1,80 @@
+(
+    id: "water_jump",
+    tags: [
+        "water",
+        "water_jump",
+    ],
+    geometry: [
+        // Ground with a hole for the pool (x in -400..400, z in 200..1000).
+        Box((
+            min: (-2000.0, -100.0, -2000.0),
+            max: (2000.0, 0.0, 200.0),
+            kind: 0,
+        )),
+        Box((
+            min: (-2000.0, -100.0, 2400.0),
+            max: (2000.0, 0.0, 2000.0),
+            kind: 0,
+        )),
+        Box((
+            min: (-2000.0, -100.0, 200.0),
+            max: (-400.0, 0.0, 2400.0),
+            kind: 0,
+        )),
+        Box((
+            min: (400.0, -100.0, 200.0),
+            max: (2000.0, 0.0, 2400.0),
+            kind: 0,
+        )),
+        // Pool floor.
+        Box((
+            min: (-400.0, -400.0, 200.0),
+            max: (400.0, -300.0, 2400.0),
+            kind: 0,
+        )),
+    ],
+    water: [
+        (
+            y: 0.0,
+            min_x: -400.0,
+            max_x: 400.0,
+            min_z: 200.0,
+            max_z: 2400.0,
+        ),
+    ],
+    start: (
+        pos: (0.0, 0.0, -400.0),
+        yaw_deg: 0.0,
+        action: "Idle",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        // Walk to the pool edge and fall in.
+        Hold(
+            frames: 40,
+            stick: (0, 80),
+            buttons: 0,
+        ),
+        // Plunge -> recovery -> tread; gentle stick_up rises to just under
+        // the surface (pitch 0.5 < breach 0.7). ~43f of idle to surface.
+        Hold(
+            frames: 80,
+            stick: (0, 40),
+            buttons: 0,
+        ),
+        // At the surface, A + hard stick_up: water jump (vy 62).
+        Press(
+            stick: (0, 80),
+            buttons: 1,
+        ),
+        // Fly, fall back, plunge again.
+        Hold(
+            frames: 70,
+            stick: (0, 0),
+            buttons: 0,
+        ),
+    ],
+    compare: AirDefault,
+)
