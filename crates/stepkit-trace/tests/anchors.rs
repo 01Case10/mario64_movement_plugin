@@ -1518,7 +1518,9 @@ fn ledge_world() -> SurfaceWorld {
 fn hanging_state() -> CharacterState {
     CharacterState {
         action: ActionId::LEDGE_GRAB,
-        pos: Vec3::new(0.0, 400.0, 440.0),
+        // Hang semantics: pos.y is the FEET; hands grip the ledge top at
+        // y=400, body dangling one hitbox height (160) below it.
+        pos: Vec3::new(0.0, 240.0, 440.0),
         face_yaw: Angle::ZERO, // facing +z, toward the wall
         ..CharacterState::default()
     }
@@ -1605,6 +1607,57 @@ fn anchor_ledge_climb_fast() {
 }
 
 #[test]
+fn anchor_ledge_climb_fast_thin_ledge() {
+    // A thin floating ledge (like the showcase scene): the hang puts the
+    // feet BELOW the ledge underside, but the headroom check must probe
+    // from the hands so the ledge's own underside doesn't block the climb.
+    let mut w = SurfaceWorld::new();
+    w.add_box(
+        Vec3::new(-2000.0, -100.0, -2000.0),
+        Vec3::new(2000.0, 0.0, 2000.0),
+        SurfaceKind::Default,
+        0,
+    );
+    // Thin ledge: top at y=400, underside at y=340.
+    w.add_box(
+        Vec3::new(-200.0, 340.0, 400.0),
+        Vec3::new(200.0, 400.0, 500.0),
+        SurfaceKind::Default,
+        0,
+    );
+    let params = MovementParams::default();
+    let registry = ActionRegistry::sm64_style();
+    let press_a = RawInput {
+        stick_x: 0,
+        stick_y: 0,
+        buttons: buttons::A,
+        cam_yaw: Angle::ZERO,
+    };
+    // Hanging: hands grip the 400 ledge top, feet dangle at 240
+    // (below the 340 underside).
+    let hang = CharacterState {
+        action: ActionId::LEDGE_GRAB,
+        pos: Vec3::new(0.0, 240.0, 440.0),
+        face_yaw: Angle::ZERO,
+        ..CharacterState::default()
+    };
+    let (s, _, _) = stepkit_core::step::tick(
+        hang,
+        press_a,
+        &w,
+        &params,
+        Timeline::default(),
+        &registry,
+        0,
+    );
+    assert_eq!(
+        s.action,
+        ActionId::LEDGE_CLIMB_FAST,
+        "A climbs off a thin ledge"
+    );
+}
+
+#[test]
 fn anchor_ledge_climb_slow() {
     // Stick toward the wall at 10+ hang frames -> SLOW_1 -> (timer 17)
     // SLOW_2 -> (timer 11 + input) IDLE, pulled 14 forward.
@@ -1685,7 +1738,9 @@ fn anchor_ledge_release_steep() {
     let registry = ActionRegistry::sm64_style();
     let state = CharacterState {
         action: ActionId::LEDGE_GRAB,
-        pos: Vec3::new(0.0, 375.8, 440.0),
+        // Hang semantics: hands at 375.8 grip the steep ramp, feet dangle
+        // one hitbox height (160) below at 215.8.
+        pos: Vec3::new(0.0, 215.8, 440.0),
         face_yaw: Angle::ZERO,
         ..CharacterState::default()
     };
