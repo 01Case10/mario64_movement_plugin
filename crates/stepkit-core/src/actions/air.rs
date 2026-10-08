@@ -1281,19 +1281,28 @@ fn ledge_pull_up(cx: &mut ActionCx, distance: f32) -> ActionResult {
 }
 
 /// Fast ledge climb: an 8-frame pull-up onto the ledge.
+///
+/// The decomp pins m->pos to the ledge top for the whole climb and lets the
+/// climb animation's root motion do the visual rise; our procedural character
+/// has no root motion, so the sim itself rises the body one full body-height
+/// over the 8 frames (the exact distance the grab hung it below the edge).
+/// No horizontal travel during the climb (matches the decomp: its climb does
+/// not move m->pos horizontally); the +14 forward nudge at the end is the
+/// decomp's climb_up_ledge. Traveling horizontally at hang height drove the
+/// head/shoulders through the ledge block.
 pub struct LedgeClimbFast;
 impl ActionHandler for LedgeClimbFast {
     fn name(&self) -> &'static str {
         "LedgeClimbFast"
     }
     fn tick(&self, cx: &mut ActionCx, _prev_buttons: u16) -> ActionResult {
-        // 60 units over 8 frames lands fully on the ledge top.
-        let (fx, fz) = cx.forward_xz();
-        cx.state.pos.x += fx * 7.5;
-        cx.state.pos.z += fz * 7.5;
+        // Rise one body-height over the 8-frame climb: the hands stay on the
+        // edge while the body comes up and over it.
+        cx.state.pos.y += cx.params.height / 8.0;
+        cx.state.vel = glam::Vec3::ZERO;
         cx.timeline.slot = slot::LEDGE_GRAB;
         if cx.state.action_timer >= 8 {
-            return ledge_pull_up(cx, 0.0);
+            return ledge_pull_up(cx, 14.0);
         }
         ActionResult::Stay
     }
@@ -1307,6 +1316,10 @@ impl ActionHandler for LedgeClimbSlow1 {
     }
     fn tick(&self, cx: &mut ActionCx, _prev_buttons: u16) -> ActionResult {
         cx.timeline.slot = slot::LEDGE_GRAB;
+        // Gradual pull-up like the fast climb, spread over the 17 frames, so
+        // the body rises instead of teleporting up when Slow2 pulls up.
+        cx.state.pos.y += cx.params.height / 17.0;
+        cx.state.vel = glam::Vec3::ZERO;
         if cx.state.action_timer >= 17 {
             return cx.goto(ActionId::LEDGE_CLIMB_SLOW_2, 0);
         }

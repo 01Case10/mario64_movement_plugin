@@ -129,6 +129,16 @@ pub enum Assertion {
         expected: f32,
         tol: f32,
     },
+    /// The body height on the last recorded frame carrying this action
+    /// lies within `expected ± tol`. Encodes moves whose end position is
+    /// load-bearing (a ledge climb must end with the body on top of the
+    /// ledge, not still hanging below it). Fails if the action never
+    /// occurs.
+    ActionEndPosY {
+        action: String,
+        expected: f32,
+        tol: f32,
+    },
 }
 
 /// A complete scenario definition.
@@ -342,6 +352,30 @@ pub fn check_assertions(
                     failures.push(format!(
                         "assertion failed: ActionEntrySpeed{{action: \"{action}\"}}: frame {} fwd_speed={:.1}, expected {:.1}±{:.1}",
                         first.frame, first.fwd_speed, expected, tol
+                    ));
+                }
+            }
+            Assertion::ActionEndPosY {
+                action,
+                expected,
+                tol,
+            } => {
+                let Some(id) = resolve(action) else {
+                    failures.push(format!(
+                        "assertion failed: ActionEndPosY{{action: \"{action}\"}}: unknown action \"{action}\""
+                    ));
+                    continue;
+                };
+                let Some(last) = frames.iter().rfind(|f| f.action == id.0) else {
+                    failures.push(format!(
+                        "assertion failed: ActionEndPosY{{action: \"{action}\"}}: action never occurred"
+                    ));
+                    continue;
+                };
+                if (last.pos_y - expected).abs() > *tol {
+                    failures.push(format!(
+                        "assertion failed: ActionEndPosY{{action: \"{action}\"}}: frame {} pos_y={:.1}, expected {:.1}±{:.1}",
+                        last.frame, last.pos_y, expected, tol
                     ));
                 }
             }
@@ -609,6 +643,38 @@ mod tests {
         assert!(fails[0].contains("vel_y=62.0"), "{}", fails[0]);
         // Action never occurring fails.
         let frames = vec![tframe(ActionId::IDLE.0, 0.0, 0.0, 0)];
+        let fails = check_assertions(&s, &frames, &reg);
+        assert_eq!(fails.len(), 1);
+        assert!(fails[0].contains("never occurred"), "{}", fails[0]);
+    }
+
+    #[test]
+    fn assertions_end_pos_y() {
+        use stepkit_core::actions::ActionRegistry;
+        let reg = ActionRegistry::sm64_style();
+        let s = scenario_with(vec![Assertion::ActionEndPosY {
+            action: "LedgeClimbFast".into(),
+            expected: 400.0,
+            tol: 2.0,
+        }]);
+        // Uses the LAST frame carrying the action.
+        let frames = vec![
+            tframe(ActionId::LEDGE_CLIMB_FAST.0, 340.0, 0.0, 1),
+            tframe(ActionId::LEDGE_CLIMB_FAST.0, 400.0, 0.0, 2),
+            tframe(ActionId::IDLE.0, 400.0, 0.0, 3),
+        ];
+        assert!(check_assertions(&s, &frames, &reg).is_empty());
+        // Stuck at hang height (the old clipping climb's last frame) fails.
+        let frames = vec![
+            tframe(ActionId::LEDGE_CLIMB_FAST.0, 240.0, 0.0, 1),
+            tframe(ActionId::LEDGE_CLIMB_FAST.0, 240.0, 0.0, 2),
+            tframe(ActionId::IDLE.0, 400.0, 0.0, 3),
+        ];
+        let fails = check_assertions(&s, &frames, &reg);
+        assert_eq!(fails.len(), 1);
+        assert!(fails[0].contains("pos_y=240.0"), "{}", fails[0]);
+        // Action never occurring fails.
+        let frames = vec![tframe(ActionId::IDLE.0, 400.0, 0.0, 0)];
         let fails = check_assertions(&s, &frames, &reg);
         assert_eq!(fails.len(), 1);
         assert!(fails[0].contains("never occurred"), "{}", fails[0]);
