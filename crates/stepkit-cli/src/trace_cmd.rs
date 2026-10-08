@@ -67,20 +67,25 @@ pub fn diff(
 }
 
 fn teacher_forced_diff(scenario: &Scenario, golden: &[TraceFrame]) -> CompareResult {
+    use stepkit_core::actions::ActionRegistry;
     use stepkit_core::angles::Angle;
     use stepkit_core::input::RawInput;
     use stepkit_core::step::{tick, Timeline};
-    use stepkit_trace::runner::ScenarioWorld;
+    use stepkit_trace::runner::bake_scenario_world;
 
-    let world = ScenarioWorld::from_scenario(scenario);
+    let world = bake_scenario_world(scenario);
+    let registry = ActionRegistry::sm64_style();
     let cam_yaw = match scenario.camera {
         stepkit_trace::scenario::Camera::Fixed { yaw_deg } => Angle::from_degrees(yaw_deg),
     };
     let params = MovementParams::default();
     let mut actual_frames: Vec<TraceFrame> = Vec::with_capacity(golden.len());
     // Walk the golden frames; each step starts from the golden state.
-    for w in golden.windows(2) {
+    // Edge detection needs the button state *before* the applied input:
+    // for frame i that is golden[i-1]'s input (0 when i == 0).
+    for (i, w) in golden.windows(2).enumerate() {
         let (prev, next) = (&w[0], &w[1]);
+        let prev_buttons = if i == 0 { 0 } else { golden[i - 1].buttons };
         let state = state_from_frame(prev);
         let input = RawInput {
             stick_x: prev.stick_x,
@@ -88,7 +93,15 @@ fn teacher_forced_diff(scenario: &Scenario, golden: &[TraceFrame]) -> CompareRes
             buttons: prev.buttons,
             cam_yaw,
         };
-        let (out, _, _) = tick(state, input, &world, &params, Timeline::default());
+        let (out, _, _) = tick(
+            state,
+            input,
+            &world,
+            &params,
+            Timeline::default(),
+            &registry,
+            prev_buttons,
+        );
         let mut f = next.clone();
         f.pos_x = out.pos.x;
         f.pos_y = out.pos.y;
