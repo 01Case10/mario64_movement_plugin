@@ -1,0 +1,14 @@
+[package]
+name = "stepkit-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Deterministic 30 Hz character-movement simulation core. No engine, no files, no clock."
+
+[dependencies]
+glam = { workspace = true }
+serde = { workspace = true, optional = true }
+
+[features]
+default = []
+snapshots = ["serde"]
