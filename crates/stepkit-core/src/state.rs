@@ -109,9 +109,31 @@ impl ActionId {
     /// Wall kick.
     /// spec: actions.wall_kick (verified: wiki:Wall Kick rev 19311)
     pub const WALL_KICK: ActionId = ActionId(0x018808B0);
+    /// Wall-kick flight: the airborne action after a wall kick.
+    /// spec: actions.wall_kick_air (verified: decomp ACT_WALL_KICK_AIR)
+    pub const WALL_KICK_AIR: ActionId = ActionId(0x03000886);
+    /// Air hit wall: transient 2-frame bonk state entered on air wall hits
+    /// at speed > 16. A in the window -> wall kick; then knockback/soft-bonk.
+    /// spec: actions.air_hit_wall (verified: decomp ACT_AIR_HIT_WALL)
+    pub const AIR_HIT_WALL: ActionId = ActionId(0x000008A7);
+    /// Steep jump: jump from a very steep floor (normal.y < 0.2924).
+    /// spec: actions.steep_jump (verified: decomp ACT_STEEP_JUMP)
+    pub const STEEP_JUMP: ActionId = ActionId(0x03000885);
+    /// Soft bonk: low-speed air wall-hit outcome; keeps forward speed.
+    /// spec: actions.soft_bonk (verified: decomp ACT_SOFT_BONK)
+    pub const SOFT_BONK: ActionId = ActionId(0x010208B6);
     /// Backwards air knockback (bonk).
-    /// spec: actions.air_knockback (PROVISIONAL)
-    pub const AIR_KNOCKBACK: ActionId = ActionId(0x400008B1);
+    /// spec: actions.backward_air_kb (verified: decomp ACT_BACKWARD_AIR_KB)
+    pub const BACKWARD_AIR_KB: ActionId = ActionId(0x010208B0);
+    /// Forwards air knockback.
+    /// spec: actions.forward_air_kb (verified: decomp ACT_FORWARD_AIR_KB)
+    pub const FORWARD_AIR_KB: ActionId = ActionId(0x010208B1);
+    /// Hard backwards air knockback (arg 1 = hard; Phase E consumes it).
+    /// spec: actions.hard_backward_air_kb (verified: decomp)
+    pub const HARD_BACKWARD_AIR_KB: ActionId = ActionId(0x010208B2);
+    /// Hard forwards air knockback (arg 1 = hard; Phase E consumes it).
+    /// spec: actions.hard_forward_air_kb (verified: decomp)
+    pub const HARD_FORWARD_AIR_KB: ActionId = ActionId(0x010208B3);
     /// Butt slide.
     /// spec: actions.butt_slide (verified: decomp ACT_BUTT_SLIDE)
     pub const BUTT_SLIDE: ActionId = ActionId(0x00840452);

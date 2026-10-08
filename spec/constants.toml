@@ -357,22 +357,22 @@ reviewed_by = "unreviewed"
 date = "2026-10-07"
 
 [jump.longjump_vertical]
-value = 28.0
+value = 30.0
 unit = "units per frame"
-source = { kind = "assumption", note = "working assumption (verify)" }
+source = { kind = "decomp", note = "decomp-derived entry table; approved 2026-10-08" }
 evidence = []
-confidence = "low"
+confidence = "medium"
 reviewed_by = "unreviewed"
-date = "2026-10-07"
+date = "2026-10-08"
 
-[jump.longjump_forward_gain]
-value = 18.0
-unit = "units per frame"
-source = { kind = "assumption", note = "working assumption (verify)" }
+[jump.longjump_forward_scale]
+value = 1.5
+unit = "multiplier (capped at 48)"
+source = { kind = "decomp", note = "decomp-derived entry table: fwd x1.5 cap 48; approved 2026-10-08" }
 evidence = []
-confidence = "low"
+confidence = "medium"
 reviewed_by = "unreviewed"
-date = "2026-10-07"
+date = "2026-10-08"
 
 [jump.longjump_entry_speed]
 value = 16.0
@@ -510,20 +510,20 @@ reviewed_by = "unreviewed"
 date = "2026-10-08"
 
 [wall_kick.vertical]
-value = 52.0
+value = 62.0
 unit = "units per frame"
-source = { kind = "assumption", note = "working assumption (verify); wiki page unreachable" }
+source = { kind = "decomp", note = "decomp-derived entry table; approved 2026-10-08" }
 evidence = ["scenario:wall_kick"]
-confidence = "low"
+confidence = "medium"
 reviewed_by = "unreviewed"
 date = "2026-10-08"
 
-[wall_kick.forward]
-value = 20.0
+[wall_kick.forward_min]
+value = 24.0
 unit = "units per frame"
-source = { kind = "assumption", note = "working assumption (verify); wiki page unreachable" }
+source = { kind = "decomp", note = "decomp-derived entry table: fwd raised to min 24; approved 2026-10-08" }
 evidence = ["scenario:wall_kick"]
-confidence = "low"
+confidence = "medium"
 reviewed_by = "unreviewed"
 date = "2026-10-08"
 
@@ -644,12 +644,75 @@ confidence = "high"
 reviewed_by = "unreviewed"
 date = "2026-10-08"
 
-[actions.air_knockback]
-value = "0x400008B1"
+[actions.wall_kick_air]
+value = "0x03000886"
 unit = "action id"
-source = { kind = "provisional", note = "STEPKIT-PROVISIONAL (bit 30): no community page" }
+source = { kind = "decomp", note = "decomp action index; approved 2026-10-08" }
 evidence = []
-confidence = "low"
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[actions.air_hit_wall]
+value = "0x000008A7"
+unit = "action id"
+source = { kind = "decomp", note = "decomp action index; approved 2026-10-08" }
+evidence = []
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[actions.steep_jump]
+value = "0x03000885"
+unit = "action id"
+source = { kind = "decomp", note = "decomp action index; approved 2026-10-08" }
+evidence = []
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[actions.soft_bonk]
+value = "0x010208B6"
+unit = "action id"
+source = { kind = "decomp", note = "decomp action index; approved 2026-10-08" }
+evidence = []
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[actions.backward_air_kb]
+value = "0x010208B0"
+unit = "action id"
+source = { kind = "decomp", note = "decomp action index; approved 2026-10-08" }
+evidence = []
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[actions.forward_air_kb]
+value = "0x010208B1"
+unit = "action id"
+source = { kind = "decomp", note = "decomp action index; approved 2026-10-08" }
+evidence = []
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[actions.hard_backward_air_kb]
+value = "0x010208B2"
+unit = "action id"
+source = { kind = "decomp", note = "decomp action index; approved 2026-10-08" }
+evidence = []
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[actions.hard_forward_air_kb]
+value = "0x010208B3"
+unit = "action id"
+source = { kind = "decomp", note = "decomp action index; approved 2026-10-08" }
+evidence = []
+confidence = "medium"
 reviewed_by = "unreviewed"
 date = "2026-10-08"
 

@@ -541,8 +541,9 @@ fn anchor_no_teleport_landing() {
 
 #[test]
 fn anchor_wall_kick_entry() {
-    // Wall kick: A during the kick window kicks away from the wall.
-    // (ID verified: wiki:Wall Kick rev 19311; numbers (verify))
+    // Wall kick: A during the kick window kicks away from the wall into
+    // WALL_KICK_AIR. (ID verified: wiki:Wall Kick rev 19311;
+    // numbers decomp-derived: fwd raised to min 24, vy 62)
     use stepkit_core::actions::air::enter_wall_kick;
     let world = flat_world();
     let params = MovementParams::default();
@@ -552,10 +553,18 @@ fn anchor_wall_kick_entry() {
     let mut cx = action_cx(st, &world, &params);
     let r = enter_wall_kick(&mut cx, Vec3::new(0.0, 0.0, -1.0));
     assert!(matches!(r, ActionResult::Goto { .. }));
+    assert_eq!(cx.state.action, ActionId::WALL_KICK_AIR);
     // Facing away from the wall: atan2(0, -1) = 180 deg = 0x8000.
     assert_eq!(cx.state.face_yaw.0, -0x8000);
-    assert!((cx.state.forward_speed - 20.0).abs() < 1e-3);
-    assert!((cx.state.vel.y - 52.0).abs() < 1e-3);
+    // Forward raised to the 24 minimum (entry was 20).
+    assert!((cx.state.forward_speed - 24.0).abs() < 1e-3);
+    assert!((cx.state.vel.y - 62.0).abs() < 1e-3);
+    // A faster entry keeps its speed.
+    let mut st2 = air_state(ActionId::JUMP, 32.0);
+    st2.wall_normal = Vec3::new(0.0, 0.0, -1.0);
+    let mut cx2 = action_cx(st2, &world, &params);
+    let _ = enter_wall_kick(&mut cx2, Vec3::new(0.0, 0.0, -1.0));
+    assert!((cx2.state.forward_speed - 32.0).abs() < 1e-3);
 }
 
 #[test]
@@ -607,4 +616,377 @@ fn anchor_water_plunge_entry() {
     assert!((cx.state.pos.y - (-100.0)).abs() < 1e-3);
     assert!((cx.state.vel.x - 5.0).abs() < 1e-3); // 20/4
     assert!((cx.state.vel.y - (-15.0)).abs() < 1e-3); // -30/2
+}
+
+#[test]
+fn anchor_wall_kick_air_flight() {
+    // WALL_KICK_AIR: no-turn model (facing holds under stick), jump-height
+    // control on (A released while rising quarters vy), landing -> JUMP_LAND.
+    use stepkit_core::actions::air::enter_wall_kick;
+    let world = flat_world();
+    let params = MovementParams::default();
+    // Enter via the kick path with enough speed for the dive cancel.
+    let mut st = air_state(ActionId::JUMP, 32.0);
+    st.wall_normal = Vec3::new(0.0, 0.0, -1.0);
+    let mut cx = action_cx(st, &world, &params);
+    let _ = enter_wall_kick(&mut cx, Vec3::new(0.0, 0.0, -1.0));
+    let st = cx.state;
+    assert_eq!(st.action, ActionId::WALL_KICK_AIR);
+    assert!(
+        (st.forward_speed - 32.0).abs() < 1e-3,
+        "speed kept, not min'd"
+    );
+    // No-turn: stick held sideways must not rotate facing.
+    let yaw_before = st.face_yaw;
+    let input = RawInput {
+        stick_x: 80,
+        stick_y: 0,
+        buttons: 0, // A released
+        cam_yaw: Angle::ZERO,
+    };
+    let vy_before = st.vel.y;
+    assert!(vy_before > 20.0, "should be rising, vy {vy_before}");
+    let (ns, _) = one_tick(st, input, 0);
+    assert_eq!(ns.face_yaw, yaw_before, "no-turn model holds facing");
+    assert!(
+        ns.vel.y < vy_before / 3.0,
+        "height control quarters vy: {} -> {}",
+        vy_before,
+        ns.vel.y
+    );
+    // B in flight -> dive.
+    let input_b = RawInput {
+        stick_x: 0,
+        stick_y: 0,
+        buttons: buttons::B,
+        cam_yaw: Angle::ZERO,
+    };
+    let (ns2, _) = one_tick(ns, input_b, 0);
+    assert_eq!(
+        ns2.action,
+        ActionId::DIVE,
+        "B -> dive, got {:?}",
+        ns2.action
+    );
+}
+
+#[test]
+fn anchor_air_hit_wall_window() {
+    // AIR_HIT_WALL: A in the 2-frame window -> WALL_KICK_AIR with vy 52;
+    // after the window, impact >= 38 -> BACKWARD_AIR_KB (+5f late-kick
+    // timer), else SOFT_BONK.
+    fn hit_state(impact: u32) -> CharacterState {
+        let mut st = air_state(ActionId::AIR_HIT_WALL, 20.0);
+        st.action_arg = impact;
+        st.wall_normal = Vec3::new(0.0, 0.0, -1.0);
+        st.vel = Vec3::new(0.0, 10.0, -20.0); // bounced away from the wall
+        st
+    }
+    let press_a = RawInput {
+        stick_x: 0,
+        stick_y: 0,
+        buttons: buttons::A,
+        cam_yaw: Angle::ZERO,
+    };
+    let neutral = RawInput {
+        stick_x: 0,
+        stick_y: 0,
+        buttons: 0,
+        cam_yaw: Angle::ZERO,
+    };
+    // A on the first window frame -> wall kick flight at vy 52.
+    let (s, _) = one_tick(hit_state(40), press_a, 0);
+    assert_eq!(s.action, ActionId::WALL_KICK_AIR, "A in window -> kick");
+    assert!((s.vel.y - 52.0).abs() < 1e-3, "kick vy {}", s.vel.y);
+    // No A: after 2 window frames the impact-40 hit resolves to knockback.
+    let (s, _) = one_tick(hit_state(40), neutral, 0);
+    assert_eq!(s.action, ActionId::AIR_HIT_WALL);
+    let (s, _) = one_tick(s, neutral, 0);
+    assert_eq!(s.action, ActionId::AIR_HIT_WALL);
+    let (s, _) = one_tick(s, neutral, 0);
+    assert_eq!(
+        s.action,
+        ActionId::BACKWARD_AIR_KB,
+        "impact>=38 -> knockback"
+    );
+    assert_eq!(s.wall_kick_timer, 5, "late-kick allowance");
+    // Impact 20 resolves to the soft bonk instead.
+    let (s, _) = one_tick(hit_state(20), neutral, 0);
+    let (s, _) = one_tick(s, neutral, 0);
+    let (s, _) = one_tick(s, neutral, 0);
+    assert_eq!(s.action, ActionId::SOFT_BONK, "impact<38 -> soft bonk");
+}
+
+#[test]
+fn anchor_steep_jump_entry() {
+    // Steep jump entry: vy = 42 + fwd/4, lateral velocity x0.75.
+    use stepkit_core::actions::air::enter_steep_jump;
+    let world = flat_world();
+    let params = MovementParams::default();
+    let mut st = air_state(ActionId::WALKING, 16.0);
+    st.face_yaw = Angle::ZERO;
+    st.vel = Vec3::new(8.0, 0.0, 16.0); // fwd 16, side 8
+    let mut cx = action_cx(st, &world, &params);
+    let r = enter_steep_jump(&mut cx);
+    assert!(matches!(r, ActionResult::Goto { .. }));
+    assert_eq!(cx.state.action, ActionId::STEEP_JUMP);
+    assert!(
+        (cx.state.vel.y - 46.0).abs() < 1e-3,
+        "vy {}",
+        cx.state.vel.y
+    );
+    assert!(
+        (cx.state.vel.x - 6.0).abs() < 1e-3,
+        "side x0.75: {}",
+        cx.state.vel.x
+    );
+    assert!(
+        (cx.state.vel.z - 16.0).abs() < 1e-3,
+        "fwd kept: {}",
+        cx.state.vel.z
+    );
+    // In flight the forward speed decays x0.98/frame with no stick control.
+    let st = cx.state;
+    let neutral = RawInput {
+        stick_x: 0,
+        stick_y: 0,
+        buttons: buttons::A, // hold A: no height-control cut
+        cam_yaw: Angle::ZERO,
+    };
+    let (ns, _) = one_tick(st, neutral, 0);
+    assert_eq!(ns.action, ActionId::STEEP_JUMP);
+    assert!(
+        (ns.forward_speed - 16.0 * 0.98).abs() < 1e-3,
+        "fwd decayed: {}",
+        ns.forward_speed
+    );
+}
+
+/// Fake world reporting a very steep floor (normal.y = 0.25 < 0.2924).
+struct SteepFloorWorld;
+impl stepkit_core::world::CollisionWorld for SteepFloorWorld {
+    fn find_floor(&self, _pos: Vec3, _max_above: f32) -> Option<stepkit_core::world::FloorHit> {
+        Some(stepkit_core::world::FloorHit {
+            y: 0.0,
+            normal: Vec3::new(0.0, 0.25, 0.9682458),
+            kind: stepkit_core::world::SurfaceKind::Default,
+            user_data: 0,
+        })
+    }
+    fn find_ceiling(&self, _pos: Vec3, _height: f32) -> Option<stepkit_core::world::CeilingHit> {
+        None
+    }
+    fn resolve_walls(
+        &self,
+        pos: Vec3,
+        _offset: f32,
+        _radius: f32,
+    ) -> stepkit_core::world::WallResolve {
+        stepkit_core::world::WallResolve {
+            pos,
+            hit: false,
+            num_walls: 0,
+            normal: Vec3::ZERO,
+        }
+    }
+    fn water_level(&self, _x: f32, _z: f32) -> Option<f32> {
+        None
+    }
+}
+
+#[test]
+fn anchor_steep_jump_routing() {
+    // A-jump from Walking on a very steep floor -> STEEP_JUMP;
+    // on flat ground -> JUMP.
+    use stepkit_core::step::tick;
+    let params = MovementParams::default();
+    let registry = ActionRegistry::sm64_style();
+    let press_a = RawInput {
+        stick_x: 0,
+        stick_y: 80,
+        buttons: buttons::A,
+        cam_yaw: Angle::ZERO,
+    };
+    // Steep world.
+    let world = SteepFloorWorld;
+    let st = CharacterState {
+        action: ActionId::WALKING,
+        pos: Vec3::new(0.0, 0.0, 0.0),
+        forward_speed: 10.0,
+        ..CharacterState::default()
+    };
+    let (ns, _, _) = tick(
+        st,
+        press_a,
+        &world,
+        &params,
+        Timeline::default(),
+        &registry,
+        0,
+    );
+    assert_eq!(ns.action, ActionId::STEEP_JUMP, "steep floor -> steep jump");
+    // Flat world -> normal jump.
+    let flat = flat_world();
+    let (ns, _, _) = tick(
+        st,
+        press_a,
+        &flat,
+        &params,
+        Timeline::default(),
+        &registry,
+        0,
+    );
+    assert_eq!(ns.action, ActionId::JUMP, "flat floor -> jump");
+}
+
+#[test]
+fn anchor_ground_pound_phases() {
+    // Ground pound: 10-frame rise at (22 - 2*timer)/frame, vy pinned -50,
+    // then slam at timer > 14. Low ceiling skips the rise.
+    use stepkit_core::actions::air::enter_ground_pound;
+    let world = flat_world();
+    let params = MovementParams::default();
+    let mut cx = action_cx(air_state(ActionId::JUMP, 0.0), &world, &params);
+    let _ = enter_ground_pound(&mut cx);
+    assert_eq!(cx.state.action, ActionId::GROUND_POUND);
+    assert_eq!(cx.state.action_state, 0, "rise phase with headroom");
+    let mut st = cx.state;
+    let y0 = st.pos.y;
+    let neutral = RawInput {
+        stick_x: 0,
+        stick_y: 0,
+        buttons: 0,
+        cam_yaw: Angle::ZERO,
+    };
+    // First rise tick (timer 1): +20.
+    let (ns, _) = one_tick(st, neutral, 0);
+    assert!(
+        (ns.pos.y - (y0 + 20.0)).abs() < 1e-3,
+        "rise +20, y {}",
+        ns.pos.y
+    );
+    assert!((ns.vel.y - (-50.0)).abs() < 1e-3, "vy pinned -50");
+    st = ns;
+    // Run to the slam transition (timer > 14).
+    for _ in 0..14 {
+        let (ns, _) = one_tick(st, neutral, 0);
+        st = ns;
+    }
+    assert_eq!(st.action_state, 1, "slam phase after timer > 14");
+    // One more tick runs the slam physics.
+    let (ns, _) = one_tick(st, neutral, 0);
+    assert!(ns.vel.y < -50.0, "slamming down, vy {}", ns.vel.y);
+    // Low ceiling: entry skips the rise.
+    let mut low = flat_world();
+    low.add_box(
+        Vec3::new(-2000.0, 250.0, -2000.0),
+        Vec3::new(2000.0, 350.0, 2000.0),
+        SurfaceKind::Default,
+        0,
+    );
+    let mut cx2 = action_cx(air_state(ActionId::JUMP, 0.0), &low, &params);
+    let _ = enter_ground_pound(&mut cx2);
+    assert_eq!(cx2.state.action_state, 1, "low ceiling skips the rise");
+}
+
+#[test]
+fn anchor_long_jump_entry() {
+    // Long jump: vy = 30, forward x1.5 capped at 48. (decomp-derived)
+    use stepkit_core::actions::air::enter_long_jump;
+    let world = flat_world();
+    let params = MovementParams::default();
+    let mut cx = action_cx(air_state(ActionId::WALKING, 32.0), &world, &params);
+    let _ = enter_long_jump(&mut cx);
+    assert!(
+        (cx.state.vel.y - 30.0).abs() < 1e-3,
+        "vy {}",
+        cx.state.vel.y
+    );
+    assert!(
+        (cx.state.forward_speed - 48.0).abs() < 1e-3,
+        "32*1.5 capped at 48"
+    );
+    let mut cx2 = action_cx(air_state(ActionId::WALKING, 20.0), &world, &params);
+    let _ = enter_long_jump(&mut cx2);
+    assert!((cx2.state.forward_speed - 30.0).abs() < 1e-3, "20*1.5 = 30");
+}
+
+#[test]
+fn anchor_air_graze_no_bonk() {
+    // Air wall hit at speed <= 16: no bonk, no action change, no dampening;
+    // the into-wall component is removed so the character slides along.
+    let mut world = flat_world();
+    world.add_box(
+        Vec3::new(-200.0, 0.0, 400.0),
+        Vec3::new(200.0, 600.0, 500.0),
+        SurfaceKind::Default,
+        0,
+    );
+    let params = MovementParams::default();
+    let registry = ActionRegistry::sm64_style();
+    // Diagonal into the wall at speed ~14.1 (< 16), head-on yaw window.
+    let mut st = air_state(ActionId::JUMP, 10.0);
+    st.pos = Vec3::new(0.0, 100.0, 344.0);
+    st.face_yaw = Angle::ZERO; // facing +z, wall normal -z: head-on
+    st.vel = Vec3::new(10.0, 0.0, 10.0);
+    let input = RawInput {
+        stick_x: 0,
+        stick_y: 0,
+        buttons: 0,
+        cam_yaw: Angle::ZERO,
+    };
+    let (ns, _, _) = stepkit_core::step::tick(
+        st,
+        input,
+        &world,
+        &params,
+        Timeline::default(),
+        &registry,
+        0,
+    );
+    assert_eq!(ns.action, ActionId::JUMP, "graze keeps the action");
+    assert!(
+        (ns.vel.x - 10.0).abs() < 1.0,
+        "tangential velocity kept (not x0.8): {}",
+        ns.vel.x
+    );
+    assert!(
+        ns.vel.z.abs() < 1.0,
+        "into-wall component removed: {}",
+        ns.vel.z
+    );
+}
+
+#[test]
+fn anchor_knockback_ids() {
+    // Phase C knockback family IDs (decomp action index).
+    assert_eq!(ActionId::BACKWARD_AIR_KB.0, 0x010208B0);
+    assert_eq!(ActionId::FORWARD_AIR_KB.0, 0x010208B1);
+    assert_eq!(ActionId::HARD_BACKWARD_AIR_KB.0, 0x010208B2);
+    assert_eq!(ActionId::HARD_FORWARD_AIR_KB.0, 0x010208B3);
+    assert_eq!(ActionId::SOFT_BONK.0, 0x010208B6);
+    assert_eq!(ActionId::AIR_HIT_WALL.0, 0x000008A7);
+    assert_eq!(ActionId::WALL_KICK_AIR.0, 0x03000886);
+    assert_eq!(ActionId::STEEP_JUMP.0, 0x03000885);
+    let r = ActionRegistry::sm64_style();
+    for id in [
+        ActionId::BACKWARD_AIR_KB,
+        ActionId::HARD_BACKWARD_AIR_KB,
+        ActionId::FORWARD_AIR_KB,
+        ActionId::HARD_FORWARD_AIR_KB,
+        ActionId::SOFT_BONK,
+        ActionId::AIR_HIT_WALL,
+        ActionId::WALL_KICK_AIR,
+        ActionId::STEEP_JUMP,
+    ] {
+        assert!(r.get(id).is_some(), "{id:?} registered");
+    }
+    // Hard variants flag arg = 1.
+    use stepkit_core::actions::air::enter_backward_air_kb;
+    let world = flat_world();
+    let params = MovementParams::default();
+    let mut cx = action_cx(air_state(ActionId::JUMP, 0.0), &world, &params);
+    let _ = enter_backward_air_kb(&mut cx, Vec3::new(0.0, 0.0, -1.0), true);
+    assert_eq!(cx.state.action, ActionId::HARD_BACKWARD_AIR_KB);
+    assert_eq!(cx.state.action_arg, 1);
 }

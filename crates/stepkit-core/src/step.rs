@@ -106,9 +106,17 @@ pub fn step_ground(
         let wr_high = world.resolve_walls(proposed, 60.0, 50.0);
         let wr = if wr_low.hit { wr_low } else { wr_high };
         if wr.hit {
-            wall_hit = true;
-            wall_normal = wr.normal;
+            // Wall yaw window: glancing hits (wall-normal yaw vs facing
+            // between 0x2AAA and 0x5555, ~30-75 deg) slide along -- keep
+            // stepping with the resolved position and no wall event.
+            // Head-on hits stop as before.
+            let normal_yaw = crate::trig::atan2(wr.normal.x, wr.normal.z);
+            let delta = state.face_yaw.diff_to(normal_yaw).abs();
             proposed = wr.pos;
+            if !(0x2AAA..=0x5555).contains(&delta) {
+                wall_hit = true;
+                wall_normal = wr.normal;
+            }
         }
         // Floor with +100 step-up test.
         match world.find_floor(proposed, 1.0) {
@@ -189,12 +197,17 @@ pub fn step_air(
                 proposed.y = c.y - 1.0;
             }
         }
-        // Walls.
+        // Walls. Only hits more head-on than 0x6000 (67.5 deg) count as
+        // wall hits; shallower angles graze (slide along, no wall event).
         let wr = world.resolve_walls(proposed, params.height * 0.5, params.radius);
         if wr.hit {
-            wall_hit = true;
-            wall_normal = wr.normal;
+            let normal_yaw = crate::trig::atan2(wr.normal.x, wr.normal.z);
+            let delta = state.face_yaw.diff_to(normal_yaw).abs();
             proposed = wr.pos;
+            if delta > 0x6000 {
+                wall_hit = true;
+                wall_normal = wr.normal;
+            }
         }
         // Landing: the highest floor at/below us must be within the snap
         // window (78) below, and we must not be rising.
@@ -203,7 +216,17 @@ pub fn step_air(
             if let Some(f) = world.find_floor(proposed, 0.0) {
                 if proposed.y - f.y <= params.air_landing_snap_window {
                     fall_speed = -vy;
-                    pos = Vec3::new(proposed.x, f.y, proposed.z);
+                    // Pedro-spot rule: only move horizontally onto the floor
+                    // when there is headroom (ceiling - floor > 160);
+                    // otherwise land vertically at the current xz.
+                    let headroom_ok = world
+                        .find_ceiling(Vec3::new(proposed.x, f.y, proposed.z), 4096.0)
+                        .is_none_or(|c| c.y - f.y > 160.0);
+                    pos = if headroom_ok {
+                        Vec3::new(proposed.x, f.y, proposed.z)
+                    } else {
+                        Vec3::new(pos.x, f.y, pos.z)
+                    };
                     floor = Some(f);
                     vy = 0.0;
                     break;
