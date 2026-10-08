@@ -1,0 +1,48 @@
+(
+    id: "dive_air",
+    tags: [
+        "air",
+        "dive",
+    ],
+    geometry: [
+        Box((
+            min: (-4000.0, -100.0, -4000.0),
+            max: (4000.0, 0.0, 4000.0),
+            kind: 0,
+        )),
+    ],
+    start: (
+        pos: (0, 0, 0),
+        yaw_deg: 0.0,
+        action: "Idle",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        Hold(
+            frames: 40,
+            stick: (0, 80),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, 80),
+            buttons: 5,
+        ),
+        Hold(
+            frames: 10,
+            stick: (0, 80),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, 80),
+            buttons: 2,
+        ),
+        Hold(
+            frames: 80,
+            stick: (0, 0),
+            buttons: 0,
+        ),
+    ],
+    compare: AirDefault,
+)

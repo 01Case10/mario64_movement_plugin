@@ -1,0 +1,58 @@
+(
+    id: "wall_kick",
+    tags: [
+        "air",
+        "wall",
+    ],
+    geometry: [
+        Box((
+            min: (-2000.0, -100.0, -2000.0),
+            max: (2000.0, 0.0, 2000.0),
+            kind: 0,
+        )),
+        Box((
+            min: (-200.0, 0.0, 400.0),
+            max: (200.0, 600.0, 500.0),
+            kind: 0,
+        )),
+    ],
+    start: (
+        pos: (0, 0, 0),
+        yaw_deg: 0.0,
+        action: "Idle",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        Hold(
+            frames: 25,
+            stick: (0, 80),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, 80),
+            buttons: 1,
+        ),
+        Hold(
+            frames: 6,
+            stick: (0, 80),
+            buttons: 1,
+        ),
+        Hold(
+            frames: 2,
+            stick: (0, 80),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, 80),
+            buttons: 1,
+        ),
+        Hold(
+            frames: 80,
+            stick: (0, 0),
+            buttons: 0,
+        ),
+    ],
+    compare: AirDefault,
+)

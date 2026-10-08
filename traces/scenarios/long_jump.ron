@@ -1,0 +1,39 @@
+(
+    id: "long_jump",
+    tags: [
+        "air",
+        "jump",
+    ],
+    geometry: [
+        Box((
+            min: (-4000.0, -100.0, -4000.0),
+            max: (4000.0, 0.0, 4000.0),
+            kind: 0,
+        )),
+    ],
+    start: (
+        pos: (0, 0, 0),
+        yaw_deg: 0.0,
+        action: "Idle",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        Hold(
+            frames: 40,
+            stick: (0, 80),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, 80),
+            buttons: 5,
+        ),
+        Hold(
+            frames: 100,
+            stick: (0, 80),
+            buttons: 0,
+        ),
+    ],
+    compare: AirDefault,
+)

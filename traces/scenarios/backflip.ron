@@ -1,0 +1,44 @@
+(
+    id: "backflip",
+    tags: [
+        "air",
+        "jump",
+        "crouch",
+    ],
+    geometry: [
+        Box((
+            min: (-2000.0, -100.0, -2000.0),
+            max: (2000.0, 0.0, 2000.0),
+            kind: 0,
+        )),
+    ],
+    start: (
+        pos: (0, 0, 0),
+        yaw_deg: 0.0,
+        action: "Idle",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        Press(
+            stick: (0, 0),
+            buttons: 4,
+        ),
+        Hold(
+            frames: 10,
+            stick: (0, 0),
+            buttons: 4,
+        ),
+        Press(
+            stick: (0, 0),
+            buttons: 5,
+        ),
+        Hold(
+            frames: 100,
+            stick: (0, 0),
+            buttons: 0,
+        ),
+    ],
+    compare: AirDefault,
+)
