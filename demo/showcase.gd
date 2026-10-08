@@ -373,7 +373,7 @@ func _choreography() -> void:
 				_press(BTN_A, 2)
 				aux_tick = -2
 		14:  # Butt slide: walk downhill on the slippery ramp.
-			in_sx = -1.0
+			in_sx = -1.0 if seg_tick < 10 else 0.0
 		15:  # Crouch & crawl: hold Z, then Z + stick.
 			if seg_tick < 30:
 				in_b = BTN_Z

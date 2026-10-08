@@ -987,7 +987,7 @@ impl ActionHandler for ButtSlide {
             return enter_jump(cx); // (verify)
         }
         let speed = update_slide_vector(cx);
-        if speed < 4.0 {
+        if speed < 4.0 && cx.state.action_timer > 5 {
             if cx.input.stick_held() {
                 return enter_walking(cx);
             }
@@ -1025,7 +1025,7 @@ impl ActionHandler for StomachSlide {
             return super::air::enter_backward_rollout(cx);
         }
         let speed = update_slide_vector(cx);
-        if speed < 4.0 {
+        if speed < 4.0 && cx.state.action_timer > 5 {
             cx.timeline.slot = slot::IDLE;
             return cx.goto(ActionId::IDLE, 0);
         }
@@ -1104,7 +1104,7 @@ impl ActionHandler for CrouchSlide {
             return enter_jump(cx);
         }
         let speed = update_slide_vector(cx);
-        if speed < 4.0 {
+        if speed < 4.0 && cx.state.action_timer > 5 {
             cx.timeline.slot = slot::CROUCH;
             return cx.goto(ActionId::CROUCH, 0);
         }

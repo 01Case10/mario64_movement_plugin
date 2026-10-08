@@ -1,0 +1,38 @@
+(
+    id: "butt_slide_ramp",
+    tags: [
+        "ground",
+        "slide",
+    ],
+    geometry: [
+        Box((
+            min: (-3000.0, -100.0, -3000.0),
+            max: (3000.0, 0.0, 3000.0),
+            kind: 0,
+        )),
+        Ramp((
+            origin: (-1000.0, 0.0, -200.0),
+            dir: (1.0, 0.0),
+            length: 400.0,
+            height: 150.0,
+            width: 300.0,
+            kind: 1,
+        )),
+    ],
+    start: (
+        pos: (-900, 50, -200),
+        yaw_deg: 0.0,
+        action: "Idle",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        Hold(
+            frames: 90,
+            stick: (-80, 0),
+            buttons: 0,
+        ),
+    ],
+    compare: GroundDefault,
+)
