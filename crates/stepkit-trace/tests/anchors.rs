@@ -2109,3 +2109,352 @@ fn anchor_slide_bonk_routing() {
     }
     assert!(stopped, "slow slide wall hit -> DECELERATING");
 }
+
+fn pool_world() -> SurfaceWorld {
+    // Deep pool: water surface at y=0, floor at y=-300.
+    let mut w = SurfaceWorld::new();
+    w.add_box(
+        Vec3::new(-1000.0, -400.0, -1000.0),
+        Vec3::new(1000.0, -300.0, 1000.0),
+        SurfaceKind::Default,
+        0,
+    );
+    w.add_water(0.0, -1000.0, 1000.0, -1000.0, 1000.0);
+    w
+}
+
+fn water_tick(
+    state: CharacterState,
+    input: RawInput,
+    prev_buttons: u16,
+    world: &SurfaceWorld,
+) -> CharacterState {
+    let params = MovementParams::default();
+    let registry = ActionRegistry::sm64_style();
+    let (s, _, _) = tick(
+        state,
+        input,
+        world,
+        &params,
+        Timeline::default(),
+        &registry,
+        prev_buttons,
+    );
+    s
+}
+
+fn water_state(action: ActionId) -> CharacterState {
+    CharacterState {
+        action,
+        pos: Vec3::new(0.0, -50.0, 0.0),
+        forward_speed: 10.0,
+        ..CharacterState::default()
+    }
+}
+
+#[test]
+fn anchor_breaststroke_chain() {
+    // Breaststroke: entry +0.5, power +1.5/frame from frame 9, ends in the
+    // glide at frame 14. A during frames 2-5 chains (+10 strength, cap 280);
+    // speed caps at strength/10 (16.0 -> 28.0 max).
+    use stepkit_core::actions::water::{enter_breaststroke, id};
+    let world = pool_world();
+    let params = MovementParams::default();
+    let mut cx = action_cx(water_state(id::WATER_IDLE), &world, &params);
+    let _ = enter_breaststroke(&mut cx);
+    let mut st = cx.state;
+    assert_eq!(st.action, id::BREASTSTROKE);
+
+    // Frame 1: entry stroke.
+    st = water_tick(st, neutral_input(), 0, &world);
+    assert_eq!(st.action_timer, 1);
+    assert!(
+        (st.forward_speed - 10.5).abs() < 1e-3,
+        "entry +0.5: {}",
+        st.forward_speed
+    );
+
+    // Frame 2 with A: chain -> strength 170, stroke restarts.
+    let press_a = RawInput {
+        buttons: buttons::A,
+        ..neutral_input()
+    };
+    st = water_tick(st, press_a, 0, &world);
+    assert_eq!(st.swim_strength, 170, "chain +10");
+    assert_eq!(st.action_timer, 0, "stroke re-triggered");
+
+    // Restarted stroke: frame 1 again -> +0.5.
+    st = water_tick(st, neutral_input(), buttons::A, &world);
+    assert!(
+        (st.forward_speed - 11.0).abs() < 1e-3,
+        "re-stroke +0.5: {}",
+        st.forward_speed
+    );
+
+    // Chain up to the max: 11 more chains -> 280.
+    for _ in 0..11 {
+        st = water_tick(st, neutral_input(), 0, &world); // timer 2
+        st = water_tick(st, neutral_input(), 0, &world); // timer 3
+        st = water_tick(st, press_a, 0, &world); // chain
+    }
+    assert_eq!(st.swim_strength, 280, "strength caps at 280");
+    // One more chain must not exceed the cap.
+    st = water_tick(st, neutral_input(), 0, &world);
+    st = water_tick(st, neutral_input(), 0, &world);
+    st = water_tick(st, press_a, 0, &world);
+    assert_eq!(st.swim_strength, 280);
+
+    // Speed cap follows strength: 30 -> 28.0 at strength 280.
+    st.forward_speed = 30.0;
+    st = water_tick(st, neutral_input(), buttons::A, &world);
+    assert!(
+        (st.forward_speed - 28.0).abs() < 1e-3,
+        "cap 28: {}",
+        st.forward_speed
+    );
+
+    // At strength 160 the cap is 16.0.
+    st.swim_strength = 160;
+    st.forward_speed = 30.0;
+    st = water_tick(st, neutral_input(), 0, &world);
+    assert!(
+        (st.forward_speed - 16.0).abs() < 1e-3,
+        "cap 16: {}",
+        st.forward_speed
+    );
+}
+
+#[test]
+fn anchor_breaststroke_power_and_end() {
+    // Power phase from frame 9 (+1.5/frame); frame 14 -> SWIMMING_END.
+    use stepkit_core::actions::water::{enter_breaststroke, id};
+    let world = pool_world();
+    let params = MovementParams::default();
+    let mut cx = action_cx(water_state(id::WATER_IDLE), &world, &params);
+    let _ = enter_breaststroke(&mut cx);
+    let mut st = cx.state;
+    // Run to frame 8 (no power yet).
+    for _ in 0..8 {
+        st = water_tick(st, neutral_input(), 0, &world);
+    }
+    assert_eq!(st.action_timer, 8);
+    let before = st.forward_speed;
+    // Frame 9: power +1.5.
+    st = water_tick(st, neutral_input(), 0, &world);
+    assert!(
+        (st.forward_speed - (before + 1.5)).abs() < 1e-3,
+        "power +1.5: {}",
+        st.forward_speed
+    );
+    // Run to frame 14 -> glide.
+    for _ in 0..5 {
+        st = water_tick(st, neutral_input(), 0, &world);
+    }
+    assert_eq!(
+        st.action,
+        id::SWIMMING_END,
+        "frame 14 -> glide, got {:?}",
+        st.action
+    );
+}
+
+#[test]
+fn anchor_flutter_kick_approach() {
+    // Flutter kick: strength resets to 160; speed approaches 12.0
+    // (0.1 up / 0.15 down). A release -> glide with the chain bonus.
+    use stepkit_core::actions::water::{enter_flutter_kick, id};
+    let world = pool_world();
+    let params = MovementParams::default();
+    let mut st = water_state(id::WATER_IDLE);
+    st.swim_strength = 280;
+    let mut cx = action_cx(st, &world, &params);
+    let _ = enter_flutter_kick(&mut cx);
+    let mut st = cx.state;
+    assert_eq!(st.action, id::FLUTTER_KICK);
+    assert_eq!(st.swim_strength, 160, "strength resets on entry");
+
+    // Approach from below: +0.1/frame.
+    st.forward_speed = 5.0;
+    let hold_a = RawInput {
+        buttons: buttons::A,
+        ..neutral_input()
+    };
+    st = water_tick(st, hold_a, buttons::A, &world);
+    assert!(
+        (st.forward_speed - 5.1).abs() < 1e-3,
+        "+0.1 up: {}",
+        st.forward_speed
+    );
+    // Approach from above: -0.15/frame.
+    st.forward_speed = 20.0;
+    st = water_tick(st, hold_a, buttons::A, &world);
+    assert!(
+        (st.forward_speed - 19.85).abs() < 1e-3,
+        "-0.15 down: {}",
+        st.forward_speed
+    );
+
+    // A release -> SWIMMING_END with +10 strength.
+    st = water_tick(st, neutral_input(), buttons::A, &world);
+    assert_eq!(st.action, id::SWIMMING_END, "release -> glide");
+    assert_eq!(st.swim_strength, 170, "release applies chain bonus");
+}
+
+#[test]
+fn anchor_swimming_end_glide() {
+    // Glide: -0.25/frame; A after frame 7 re-chains to the stroke;
+    // frame 15 -> WATER_ACTION_END.
+    use stepkit_core::actions::water::id;
+    let world = pool_world();
+    let mut st = water_state(id::SWIMMING_END);
+    st.forward_speed = 20.0;
+    st = water_tick(st, neutral_input(), 0, &world);
+    assert!(
+        (st.forward_speed - 19.75).abs() < 1e-3,
+        "glide -0.25: {}",
+        st.forward_speed
+    );
+    // A at frame 8 (> 7) -> breaststroke, strength kept.
+    for _ in 0..7 {
+        st = water_tick(st, neutral_input(), 0, &world);
+    }
+    assert_eq!(st.action_timer, 8);
+    let press_a = RawInput {
+        buttons: buttons::A,
+        ..neutral_input()
+    };
+    st = water_tick(st, press_a, 0, &world);
+    assert_eq!(st.action, id::BREASTSTROKE, "A after frame 7 -> stroke");
+    assert_eq!(st.swim_strength, 160, "strength kept");
+    // Without input the glide ends at frame 15 -> recovery.
+    let mut st2 = water_state(id::SWIMMING_END);
+    for _ in 0..15 {
+        st2 = water_tick(st2, neutral_input(), 0, &world);
+    }
+    assert_eq!(st2.action, id::WATER_ACTION_END, "frame 15 -> recovery");
+}
+
+#[test]
+fn anchor_water_jump_entry() {
+    // Water jump: A near the surface (within 1.5), pitch >= 0, stick pushed
+    // up hard -> WATER_JUMP with vy 62 and forward raised to at least 15.
+    use stepkit_core::actions::water::id;
+    let world = pool_world();
+    let mut st = water_state(id::WATER_IDLE);
+    st.pos.y = -1.0; // within 1.5 of the surface (wl = 0)
+    st.forward_speed = 8.0;
+    let jump_input = RawInput {
+        stick_x: 0,
+        stick_y: 80, // pitch = 1.0 (up)
+        buttons: buttons::A,
+        cam_yaw: Angle::ZERO,
+    };
+    st = water_tick(st, jump_input, 0, &world);
+    assert_eq!(
+        st.action,
+        ActionId::WATER_JUMP,
+        "near-surface A -> water jump"
+    );
+    assert!((st.vel.y - 62.0).abs() < 1e-3, "vy 62: {}", st.vel.y);
+    assert!(
+        (st.forward_speed - 15.0).abs() < 1e-3,
+        "forward min 15: {}",
+        st.forward_speed
+    );
+
+    // Deep water: same input strokes instead of jumping.
+    let mut deep = water_state(id::WATER_IDLE);
+    deep.pos.y = -50.0;
+    deep = water_tick(deep, jump_input, 0, &world);
+    assert_eq!(
+        deep.action,
+        id::BREASTSTROKE,
+        "deep A -> stroke, got {:?}",
+        deep.action
+    );
+
+    // Near surface but stick down (pitch < 0): no jump.
+    let mut down = water_state(id::WATER_IDLE);
+    down.pos.y = -1.0;
+    let down_input = RawInput {
+        stick_x: 0,
+        stick_y: -80,
+        buttons: buttons::A,
+        cam_yaw: Angle::ZERO,
+    };
+    down = water_tick(down, down_input, 0, &world);
+    assert_ne!(down.action, ActionId::WATER_JUMP, "pitch < 0 must not jump");
+}
+
+#[test]
+fn anchor_plunge_to_idle() {
+    // Plunge expiry -> WATER_ACTION_END (10 frames) -> WATER_IDLE.
+    use stepkit_core::actions::water::{enter_water_plunge, id, water_plunge_surface};
+    let world = pool_world();
+    let params = MovementParams::default();
+    let st = CharacterState {
+        action: ActionId::JUMP,
+        pos: Vec3::new(0.0, -150.0, 0.0),
+        vel: Vec3::new(20.0, -30.0, 0.0),
+        forward_speed: 20.0,
+        ..CharacterState::default()
+    };
+    let mut cx = action_cx(st, &world, &params);
+    let wl = water_plunge_surface(&cx).expect("should plunge");
+    let _ = enter_water_plunge(&mut cx, wl);
+    let mut st = cx.state;
+    assert_eq!(st.action, id::WATER_PLUNGE);
+    // 20 frames of plunge (deep pool: no floor contact) -> recovery.
+    for _ in 0..20 {
+        st = water_tick(st, neutral_input(), 0, &world);
+    }
+    assert_eq!(
+        st.action,
+        id::WATER_ACTION_END,
+        "plunge -> recovery, got {:?}",
+        st.action
+    );
+    // 10 frames of recovery -> treading.
+    for _ in 0..10 {
+        st = water_tick(st, neutral_input(), 0, &world);
+    }
+    assert_eq!(
+        st.action,
+        id::WATER_IDLE,
+        "recovery -> idle, got {:?}",
+        st.action
+    );
+    // Treading eases toward 16 with the stick held.
+    st.forward_speed = 5.0;
+    let swim_up = RawInput {
+        stick_x: 0,
+        stick_y: 40,
+        ..neutral_input()
+    };
+    st = water_tick(st, swim_up, 0, &world);
+    assert!(
+        (st.forward_speed - 6.0).abs() < 1e-3,
+        "idle ease +1: {}",
+        st.forward_speed
+    );
+}
+
+#[test]
+fn anchor_water_idle_flutter_entry() {
+    // A held (not just pressed) in WATER_IDLE -> FLUTTER_KICK.
+    use stepkit_core::actions::water::id;
+    let world = pool_world();
+    let mut st = water_state(id::WATER_IDLE);
+    // Held A (no edge): flutter kick.
+    let hold_a = RawInput {
+        buttons: buttons::A,
+        ..neutral_input()
+    };
+    st = water_tick(st, hold_a, buttons::A, &world);
+    assert_eq!(
+        st.action,
+        id::FLUTTER_KICK,
+        "held A -> flutter, got {:?}",
+        st.action
+    );
+}
