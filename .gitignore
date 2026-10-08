@@ -1,0 +1,5 @@
+/target/
+*.orig
+oracle/
+*.pack
+.DS_Store
