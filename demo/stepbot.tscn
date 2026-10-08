@@ -14,6 +14,10 @@ height = 0.44
 radius = 0.08
 height = 0.6
 
+[sub_resource type="CapsuleMesh" id="limb_short"]
+radius = 0.08
+height = 0.3
+
 [sub_resource type="StandardMaterial3D" id="body_mat"]
 albedo_color = Color(0.2, 0.5, 0.9, 1)
 
@@ -55,17 +59,33 @@ surface_material_override/0 = SubResource("eye_mat")
 [node name="ArmLPivot" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.32, 1.15, 0)
 
-[node name="ArmL" type="MeshInstance3D" parent="ArmLPivot"]
+[node name="UpperArmL" type="MeshInstance3D" parent="ArmLPivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.15, 0)
+mesh = SubResource("limb_short")
+surface_material_override/0 = SubResource("limb_mat")
+
+[node name="ElbowLPivot" type="Node3D" parent="ArmLPivot"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.3, 0)
-mesh = SubResource("limb")
+
+[node name="ForearmL" type="MeshInstance3D" parent="ArmLPivot/ElbowLPivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.15, 0)
+mesh = SubResource("limb_short")
 surface_material_override/0 = SubResource("limb_mat")
 
 [node name="ArmRPivot" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.32, 1.15, 0)
 
-[node name="ArmR" type="MeshInstance3D" parent="ArmRPivot"]
+[node name="UpperArmR" type="MeshInstance3D" parent="ArmRPivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.15, 0)
+mesh = SubResource("limb_short")
+surface_material_override/0 = SubResource("limb_mat")
+
+[node name="ElbowRPivot" type="Node3D" parent="ArmRPivot"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.3, 0)
-mesh = SubResource("limb")
+
+[node name="ForearmR" type="MeshInstance3D" parent="ArmRPivot/ElbowRPivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.15, 0)
+mesh = SubResource("limb_short")
 surface_material_override/0 = SubResource("limb_mat")
 
 [node name="LegLPivot" type="Node3D" parent="."]

@@ -8,6 +8,8 @@ extends Node3D
 @onready var head_pivot: Node3D = $HeadPivot
 @onready var arm_l: Node3D = $ArmLPivot
 @onready var arm_r: Node3D = $ArmRPivot
+@onready var elbow_l: Node3D = $ArmLPivot/ElbowLPivot
+@onready var elbow_r: Node3D = $ArmRPivot/ElbowRPivot
 @onready var leg_l: Node3D = $LegLPivot
 @onready var leg_r: Node3D = $LegRPivot
 
@@ -25,6 +27,8 @@ func _animate(_delta: float) -> void:
 	rotation.z = 0.0
 	arm_l.rotation = Vector3.ZERO
 	arm_r.rotation = Vector3.ZERO
+	elbow_l.rotation = Vector3.ZERO
+	elbow_r.rotation = Vector3.ZERO
 	leg_l.rotation = Vector3.ZERO
 	leg_r.rotation = Vector3.ZERO
 	body.position.y = 0.85
@@ -68,12 +72,25 @@ func _animate(_delta: float) -> void:
 			leg_l.rotation.x = -0.4
 			leg_r.rotation.x = -0.4
 			rotation.z = 0.3
-		0x03000888, 0x0188088A, 0x00880456:  # Long jump / dive / dive slide: superman.
-			arm_l.rotation.x = -2.8
-			arm_r.rotation.x = -2.8
+		0x03000888, 0x0188088A:  # Long jump / dive (air): superman.
+			# Pitch 0.32 (not 0.5) and arms -2.9 (not -2.8): the full 0.5 pitch
+			# swings the head/hands 0.7-1.0 in front of the root, but the sim
+			# only guarantees 0.5 wall clearance — the visual then clips walls
+			# on dive impacts. Tighter pose keeps the visual inside.
+			arm_l.rotation.x = -2.9
+			arm_r.rotation.x = -2.9
 			leg_l.rotation.x = 0.4
 			leg_r.rotation.x = 0.4
-			rotation.x = 0.5
+			rotation.x = 0.32
+		0x00880456:  # Dive slide (ground): low slide, arms trailing.
+			# Arms trail BACK (+0.5), not forward: extended superman arms put
+			# the hands 0.7+ in front of the root, clipping walls the sim
+			# holds 0.5 clear of. Trailing arms stay inside.
+			arm_l.rotation.x = 0.5
+			arm_r.rotation.x = 0.5
+			leg_l.rotation.x = 0.4
+			leg_r.rotation.x = 0.4
+			rotation.x = 0.22
 		0x018008AA, 0x0080045A:  # Slide kick (air) / slide-kick slide: leg out.
 			leg_l.rotation.x = -1.2
 			arm_l.rotation.x = -2.0
@@ -96,24 +113,27 @@ func _animate(_delta: float) -> void:
 		0x00020462, 0x00020463, 0x00020460, 0x00020461, \
 		0x00020464, 0x00020465, 0x00020466, 0x000008A7:
 			# Knockbacks (air + ground), ground bonk, soft bonk, air hit wall: sprawl.
-			# Lean is -0.25 (not -0.4): the full -0.4 swings the torso's AABB
-			# into the wall on impact frames (the sim holds 0.5 m, the visual
-			# body leans forward past it).
+			# Lean is -0.15 (not -0.25): the full -0.25 swings the head 0.38
+			# behind the root, which clips the wall when facing away after a
+			# bonk (sim holds 0.5 m clearance).
 			arm_l.rotation.z = 1.2
 			arm_r.rotation.z = -1.2
-			rotation.x = -0.25
-		0x0800034B:
-			# Ledge grab: arms up-forward to the edge. The hang is 30 units
-			# outside the wall face, so -2.62 (30 deg from vertical) puts the
-			# hands exactly at the edge (0.30 m forward reach).
-			arm_l.rotation.x = -2.62
-			arm_r.rotation.x = -2.62
-		0x0000054F, 0x0000054C, 0x0000054D:
-			# Ledge climbs (fast/slow): arms straight up. The body rises at
-			# ~0.1 m inside the wall; forward-reaching arms would stab into
-			# the top of the ledge block, so they go straight overhead.
-			arm_l.rotation.x = -3.1
-			arm_r.rotation.x = -3.1
+			rotation.x = -0.15
+		0x0800034B, 0x0000054F, 0x0000054C, 0x0000054D:
+			# Ledge grab + climbs: 2-bone arm IK from sim hints (hands to the
+			# edge). Falls back to FK poses if no hint is active.
+			if not _solve_arm_ik():
+				if action == 0x0800034B:
+					# Ledge grab FK: arms up-forward to the edge. The hang is
+					# 30 units outside the wall face, so -2.62 puts the hands
+					# exactly at the edge (0.30 m forward reach).
+					arm_l.rotation.x = -2.62
+					arm_r.rotation.x = -2.62
+				else:
+					# Climb FK: arms straight up. Forward-reaching arms would
+					# stab into the top of the ledge block.
+					arm_l.rotation.x = -3.1
+					arm_r.rotation.x = -3.1
 		0x00840452:  # Butt slide: sit, legs forward (negative = forward/downhill).
 			body.position.y = 0.6
 			head_pivot.position.y = 1.15
@@ -167,3 +187,31 @@ func _animate(_delta: float) -> void:
 	if arm_swing != 0.0:
 		arm_l.rotation.x = arm_swing
 		arm_r.rotation.x = -arm_swing
+
+## 2-bone arm IK from sim IK hints.
+##
+## Returns true if IK was solved (hints active), false to use FK fallback.
+## Reads get_ik_hand_l/r from the parent StepChar3D node (Vector3.ZERO = no
+## hint). Elbows bend backward/outward (natural hang); beyond max reach the
+## arms fully extend toward the target (graceful release during the climb).
+func _solve_arm_ik() -> bool:
+	var stepkit := get_parent()
+	if stepkit == null or not stepkit.has_method("get_ik_hand_l"):
+		return false
+	var target_l: Vector3 = stepkit.get_ik_hand_l()
+	var target_r: Vector3 = stepkit.get_ik_hand_r()
+	if target_l.length() < 0.001 or target_r.length() < 0.001:
+		return false
+	# Pole: elbows point backward (away from the wall) and slightly down.
+	var facing: Vector3 = (global_transform.basis * Vector3(0, 0, 1)).normalized()
+	var pole: Vector3 = (-facing + Vector3.DOWN * 0.35).normalized()
+	var parent_basis: Basis = global_transform.basis
+	var res_l := StepKitIK.solve_arm(
+		arm_l.global_transform.origin, target_l, 0.3, 0.3, pole, parent_basis)
+	var res_r := StepKitIK.solve_arm(
+		arm_r.global_transform.origin, target_r, 0.3, 0.3, pole, parent_basis)
+	arm_l.basis = res_l[0]
+	elbow_l.basis = res_l[1]
+	arm_r.basis = res_r[0]
+	elbow_r.basis = res_r[1]
+	return true

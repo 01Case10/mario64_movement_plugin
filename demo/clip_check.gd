@@ -13,7 +13,7 @@ extends Node3D
 
 const INSET := 0.08
 const MIN_SIZE := 0.02
-const MESH_NAMES := ["Body", "Head", "ArmL", "ArmR", "LegL", "LegR"]
+const MESH_NAMES := ["Body", "HeadPivot/Head", "ArmLPivot/UpperArmL", "ArmLPivot/ElbowLPivot/ForearmL", "ArmRPivot/UpperArmR", "ArmRPivot/ElbowRPivot/ForearmR", "LegLPivot/LegL", "LegRPivot/LegR"]
 # Write the report a few frames before the showcase quits.
 const REPORT_TICK := 1565
 
@@ -67,16 +67,16 @@ func _write_report() -> void:
 	_reported = true
 	var status := "PASS" if _hits.is_empty() else "FAIL"
 	var lines: Array[String] = []
-	lines.append("CLIP CHECK v6: " + status)
+	lines.append("CLIP CHECK v8: " + status)
 	lines.append("frames checked: %d" % _frame)
 	lines.append("hits: %d" % _hits.size())
 	for h in _hits:
 		lines.append("frame %d action %s mesh %s" % [h[0], h[1], h[2]])
-	var path := OS.get_environment("HOME") + "/workspace/your_files/clip_check_v6.txt"
+	var path := OS.get_environment("HOME") + "/workspace/your_files/clip_check_v8.txt"
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	if f:
 		f.store_string("\n".join(lines) + "\n")
 		f.close()
-	print("==== CLIP CHECK v6: %s (%d hits over %d frames) ====" % [status, _hits.size(), _frame])
+	print("==== CLIP CHECK v8: %s (%d hits over %d frames) ====" % [status, _hits.size(), _frame])
 	for h in _hits:
 		print("  frame %d action %s mesh %s" % [h[0], h[1], h[2]])
