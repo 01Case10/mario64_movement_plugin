@@ -1,0 +1,31 @@
+(
+    id: "walk_accel_mag80_flat",
+    tags: [
+        "ground",
+        "walking",
+        "anchor",
+    ],
+    geometry: [
+        Box((
+            min: (-2000.0, -100.0, -2000.0),
+            max: (2000.0, 0.0, 2000.0),
+            kind: 0,
+        )),
+    ],
+    start: (
+        pos: (0, 0, 0),
+        yaw_deg: 0.0,
+        action: "Idle",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        Hold(
+            frames: 45,
+            stick: (0, 80),
+            buttons: 0,
+        ),
+    ],
+    compare: GroundDefault,
+)

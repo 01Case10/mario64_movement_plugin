@@ -1,0 +1,18 @@
+# Airborne / jump / dive numeric anchors from ukikipedia action pages.
+# Sources: wiki:Single Jump@19309, wiki:Dive@19303, wiki:Long Jump@14374, wiki:Gravity@20294, retrieved 2026-10-07.
+parameter,value,unit,note
+jump_vertical_base,42,units/frame,"vertical speed on jump entry = 42 + forward_speed/4"
+jump_vertical_forward_factor,0.25,dimensionless,"see above"
+jump_forward_retain,0.8,dimensionless,"forward speed is multiplied by 0.8 when a jump starts"
+jump_vertical_halved_condition,squished_or_quicksand_depth>1,condition,"vertical speed is halved if Mario is squished or quicksand depth > 1"
+dive_horizontal_gain,15,units/frame,"horizontal speed gained on dive entry, then clamped to the 48 walk cap"
+dive_vertical_gain_ground,20,units/frame,"vertical speed given when diving from a ground action (not from airborne dives)"
+gravity_default,-4,units/frame^2,"default per-frame vertical speed change"
+terminal_velocity_default,-75,units/frame,"default terminal fall speed"
+gravity_longjump,-2,units/frame^2,"long jump / slide kick gravity; terminal -75"
+gravity_lavaboost,-3.2,units/frame^2,"lava boost gravity; terminal -65"
+gravity_metal_water,-1.6,units/frame^2,"underwater with metal cap; terminal -16"
+jump_height_control_threshold,20,units/frame,"if action controls jump height, vertical speed > 20 and A not held: vertical speed quartered"
+wingcap_glide_terminal,-37.5,units/frame,"wing cap glide terminal fall speed"
+twirl_fall_slow,4,units/frame^2,"twirling gravity step; scaled by 1024/yaw-speed when spinning faster than 1024 yaw units/frame"
+longjump_fast_anim_threshold,16,units/frame,"initial long-jump speed > 16 selects the fast long-jump animation"

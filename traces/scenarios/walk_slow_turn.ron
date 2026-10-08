@@ -1,0 +1,45 @@
+(
+    id: "walk_slow_turn",
+    tags: [
+        "ground",
+        "turning",
+    ],
+    geometry: [
+        Box((
+            min: (-2000.0, -100.0, -2000.0),
+            max: (2000.0, 0.0, 2000.0),
+            kind: 0,
+        )),
+    ],
+    start: (
+        pos: (0, 0, 0),
+        yaw_deg: 0.0,
+        action: "Idle",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        Hold(
+            frames: 15,
+            stick: (0, 80),
+            buttons: 0,
+        ),
+        Hold(
+            frames: 15,
+            stick: (40, 69),
+            buttons: 0,
+        ),
+        Hold(
+            frames: 15,
+            stick: (69, 40),
+            buttons: 0,
+        ),
+        Hold(
+            frames: 15,
+            stick: (80, 0),
+            buttons: 0,
+        ),
+    ],
+    compare: GroundDefault,
+)

@@ -1,0 +1,25 @@
+# Walking behavior numeric anchors from the ukikipedia "Walking" action page.
+# Source: wiki:Walking@19299 (rev 2024-06-18T20:51:20Z), retrieved 2026-10-07.
+# Units are the game's distance units; speeds are units per frame (1 frame = 1/30 s).
+# Values describe observable behavior only (target speeds, per-frame adjustments, thresholds).
+parameter,value,unit,note
+walk_target_speed_default,32,units/frame,"maximum target speed; the stick's intended magnitude is capped to this"
+walk_target_speed_slow_floor,24,units/frame,"maximum target speed on slow floor surfaces"
+walk_speedup_base,1.1,units/frame^2,"added to forward speed each frame while accelerating"
+walk_speedup_falloff_divisor,43,dimensionless,"while speed <= target: accel = 1.1 - speed/43 per frame"
+walk_decel_flat_ground,1.0,units/frame^2,"subtracted each frame when speed > target and floor normal.y >= 0.95"
+walk_hard_cap,48,units/frame,"forward speed is clamped to never exceed this"
+walk_turn_rate,0x800,angle units/frame,"facing angle approaches the intended stick yaw at up to this rate"
+walk_enter_speed_clamp,8,units/frame,"entering walk from low speed: speed set to min(intended stick magnitude, 8)"
+walk_dust_threshold,16,units/frame,"intendedMag - forwardVel > 16 spawns dust (no ground step outcome change)"
+walk_turnaround_speed,16,units/frame,"stick held back while speed >= 16 enters Turning Around"
+walk_brake_speed,16,units/frame,"neutral stick or first-person with speed >= 16 enters Braking; below 16 Decelerating"
+dive_speed_ground,29,units/frame,"pressing B while walking/decelerating/crawling needs speed >= 29 else punch"
+dive_speed_air,28,units/frame,"pressing B in single/double jump needs speed > 28 else jump kick"
+dive_stick_magnitude,48,stick units,"stick magnitude must exceed 48 for the dive from walking"
+triplejump_speed,20,units/frame,"after a double-jump landing, triple jump requires forward speed > 20"
+slope_accel_very_slippery,5.3,units/frame^2,"downhill/uphill slope speed adjustment per frame (scaled by slope steepness)"
+slope_accel_slippery,2.7,units/frame^2,"same, slippery floor class"
+slope_accel_default,1.7,units/frame^2,"same, default floor class"
+slope_accel_not_slippery,0.0,units/frame^2,"same, non-slippery floor class"
+quicksand_slow_depth,10,units,"quicksand depth above this scales the target speed down by 6.25/depth"

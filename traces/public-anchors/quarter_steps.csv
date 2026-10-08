@@ -1,0 +1,13 @@
+# Quarter-step (movement step) numeric anchors from the ukikipedia "Movement steps" page.
+# Source: wiki:Movement steps@19723 (rev 2025-08-19T16:29:37Z); "Quarter Steps"@14388 redirects to it.
+# Retrieved 2026-10-07.
+parameter,value,unit,note
+quarter_steps_per_frame,4,count,"on ground or in air, movement is split into 4 quarter-steps per frame"
+quarter_step_displacement,1/4,fraction of velocity,"each quarter-step moves 1/4 of the frame velocity"
+air_landing_snap_window,78,units,"if the quarter-step position is <= 78 units below a floor, Mario lands on it"
+air_ceiling_zero_vel_window,160,units,"ceiling <= 160 units above with non-negative vertical velocity zeroes vertical velocity"
+hangable_ceiling_check,160,units,"same 160-unit window used when checking hangable ceilings"
+riding_shell_water_floor_window,78,units,"with the riding-shell flag, water surface acts as a floor up to 78 units above the position"
+water_plunge_depth,100,units,"100 units below the water level transitions to water plunge"
+fall_scream_distance,1150,units,"falling more than 1150 units from the peak plays the falling scream"
+defacto_speed_definition,speed * floor_normal_y,formula,"effective speed = horizontal speed times the floor normal's y; shrinks on steeper slopes (wiki:De facto speed@14131)"

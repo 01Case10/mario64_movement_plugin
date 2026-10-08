@@ -1,0 +1,30 @@
+(
+    id: "strafe_left",
+    tags: [
+        "ground",
+        "walking",
+    ],
+    geometry: [
+        Box((
+            min: (-2000.0, -100.0, -2000.0),
+            max: (2000.0, 0.0, 2000.0),
+            kind: 0,
+        )),
+    ],
+    start: (
+        pos: (0, 0, 0),
+        yaw_deg: 0.0,
+        action: "Idle",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        Hold(
+            frames: 40,
+            stick: (-80, 0),
+            buttons: 0,
+        ),
+    ],
+    compare: GroundDefault,
+)

@@ -1,0 +1,48 @@
+(
+    id: "double_jump",
+    tags: [
+        "air",
+        "jump",
+    ],
+    geometry: [
+        Box((
+            min: (-2000.0, -100.0, -2000.0),
+            max: (2000.0, 0.0, 2000.0),
+            kind: 0,
+        )),
+    ],
+    start: (
+        pos: (0, 0, 0),
+        yaw_deg: 0.0,
+        action: "Idle",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        Hold(
+            frames: 10,
+            stick: (0, 80),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, 80),
+            buttons: 1,
+        ),
+        Hold(
+            frames: 70,
+            stick: (0, 80),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, 80),
+            buttons: 1,
+        ),
+        Hold(
+            frames: 40,
+            stick: (0, 80),
+            buttons: 0,
+        ),
+    ],
+    compare: AirDefault,
+)

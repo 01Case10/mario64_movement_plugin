@@ -1,0 +1,15 @@
+# Community-documented action IDs (hex) from ukikipedia.net action pages.
+# Source: ukikipedia.net wiki API, retrieved 2026-10-07. One infobox per action page.
+# Pages with no standalone wiki page are NOT listed here (see spec/provenance/ukikipedia-notes.md).
+# Column id_low9 is the 9-bit action id (low 9 bits of hex_value).
+action_name,hex_value,id_low9,group,wiki_page,wiki_revision,revision_date
+Idle,0x0C400201,0x001,Stationary,Idle,20401,2026-05-27T18:50:07Z
+Turning Around,0x00000443,0x043,Moving,Turning Around,18182,2023-08-12T19:45:04Z
+Single Jump,0x03000880,0x080,Airborne,Single Jump,19309,2024-06-19T14:32:18Z
+Double Jump,0x03000881,0x081,Airborne,Double Jump,18964,2024-01-21T01:22:33Z
+Triple Jump,0x01000882,0x082,Airborne,Triple Jump,19300,2024-06-18T20:55:28Z
+Backflip,0x01000883,0x083,Airborne,Backflip,19307,2024-06-18T21:32:03Z
+Side Flip,0x01000887,0x087,Airborne,Side Flip,20374,2026-05-25T01:18:56Z
+Long Jump,0x03000888,0x088,Airborne,Long Jump,14374,2021-05-12T01:25:29Z
+Dive,0x0188088A,0x08A,Airborne,Dive,19303,2024-06-18T21:14:27Z
+Ledge Grab,0x0800034B,0x14B,Automatic,Ledge Grab,19518,2025-01-12T20:30:38Z
