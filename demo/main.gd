@@ -2,6 +2,8 @@ extends Node3D
 ## StepKit demo: drives a StepChar3D from keyboard input, bakes a small
 ## level (floor, wall-kick wall, ledge, slide ramp), follows with a camera.
 
+const StepKitInput = preload("res://stepkit_input.gd")
+
 @onready var world: StepWorld3D = $World
 @onready var player: StepChar3D = $Player
 @onready var camera: Camera3D = $Camera3D
@@ -57,19 +59,15 @@ func _ready() -> void:
 	player.landed.connect(func(fs): print("landed fall=", fs))
 	player.wall_hit.connect(func(): print("wall hit"))
 	player.ledge_grabbed.connect(func(): print("LEDGE GRAB"))
-	help_label.text = "WASD/arrows: move  SPACE: A(jump)  SHIFT: B(dive)  C: Z(ground pound)\nRun at the wall, jump, then A again to wall-kick. Jump at the ledge to grab it."
+	help_label.text = "WASD/arrows or left stick: move  SPACE/A: jump  SHIFT/X: dive  C/B: pound  Right stick: camera\nRun at the wall, jump, then A again to wall-kick. Jump at the ledge to grab it."
 
 func _physics_process(_delta: float) -> void:
 	if not input_enabled:
 		return
-	var sx := Input.get_axis("move_left", "move_right")
-	var sy := Input.get_axis("move_back", "move_forward")
-	player.set_stick(sx, sy)
-	var b := 0
-	if Input.is_action_pressed("jump"): b |= 1
-	if Input.is_action_pressed("dive"): b |= 2
-	if Input.is_action_pressed("pound"): b |= 4
-	player.set_buttons(b)
+	# StepKitInput polls the gamepad directly, falling back to the
+	# project's InputMap (WASD/Space/Shift/C) when no gamepad is present.
+	# Right stick rotates the camera yaw.
+	StepKitInput.drive(player, player.get_camera_yaw_deg(), _delta)
 	# Follow camera.
 	var pp := player.global_position
 	var target := pp + Vector3(0, 4.5, 9.0)

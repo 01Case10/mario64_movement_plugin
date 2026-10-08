@@ -99,6 +99,11 @@ impl StepChar3D {
         self.camera_yaw_deg = deg;
     }
 
+    #[func]
+    pub fn get_camera_yaw_deg(&self) -> f32 {
+        self.camera_yaw_deg
+    }
+
     /// Set Mario's facing yaw in degrees (0 = +Z, 90 = +X). Used by the
     /// showcase to face him toward the action on segment entry, so the
     /// camera-relative stick doesn't cause a diagonal turn arc.
