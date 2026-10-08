@@ -36,23 +36,26 @@ const ACTION_NAMES := {
 	0x40000011: "Crawl",
 }
 
-# Segments: (start_frame, label, teleport_pos)
+# Segments: (start_frame, label, teleport_pos, camera_offset)
+# Camera offsets are chosen for guaranteed line-of-sight (no walls between).
 const SEGMENTS := [
-	[0, "Idle", Vector3(0, 0.1, 0)],
-	[60, "Walking", Vector3(0, 0.1, 0)],
-	[150, "Jump Chain: Single -> Double -> Triple", Vector3(0, 0.1, 0)],
-	[280, "Backflip", Vector3(0, 0.1, 5)],
-	[340, "Side Flip", Vector3(0, 0.1, 5)],
-	[400, "Long Jump", Vector3(0, 0.1, 0)],
-	[460, "Dive", Vector3(0, 0.1, 0)],
-	[520, "Ground Pound", Vector3(0, 0.1, 0)],
-	[580, "Wall Kick", Vector3(0, 0.1, 10)],
-	[660, "Ledge Grab", Vector3(12, 0.1, 5)],
-	[730, "Butt Slide", Vector3(-8, 0.1, -2)],
-	[800, "Crouch & Crawl", Vector3(0, 0.1, 0)],
-	[870, "Water Plunge & Swim", Vector3(-12, 0.1, -4)],
-	[980, "Done", Vector3(0, 0.1, 0)],
+	[0, "Idle", Vector3(0, 0.1, 0), Vector3(0, 5, 9)],
+	[60, "Walking", Vector3(0, 0.1, 0), Vector3(0, 5, 9)],
+	[150, "Jump Chain: Single -> Double -> Triple", Vector3(0, 0.1, 0), Vector3(0, 5, 9)],
+	[280, "Backflip", Vector3(0, 0.1, 5), Vector3(0, 5, 9)],
+	[340, "Side Flip", Vector3(0, 0.1, 5), Vector3(0, 5, 9)],
+	[400, "Long Jump", Vector3(0, 0.1, 0), Vector3(0, 5, 9)],
+	[460, "Dive", Vector3(0, 0.1, 0), Vector3(0, 5, 9)],
+	[520, "Ground Pound", Vector3(0, 0.1, 0), Vector3(0, 5, 9)],
+	[580, "Wall Kick", Vector3(0, 0.1, 10), Vector3(0, 6, -6)],  # behind+above, wall at z=15
+	[660, "Ledge Grab", Vector3(12, 0.1, 5), Vector3(0, 3, -7)],  # front view, ledge at z=10
+	[730, "Butt Slide", Vector3(-8, 0.1, -2), Vector3(0, 4, 8)],
+	[800, "Crouch & Crawl", Vector3(0, 0.1, 0), Vector3(0, 5, 9)],
+	[870, "Water Plunge & Swim", Vector3(-12, 0.1, -4), Vector3(0, 6, 8)],
+	[980, "Done", Vector3(0, 0.1, 0), Vector3(0, 5, 9)],
 ]
+
+var cam_offset := Vector3(0, 5, 9)
 
 func _ready() -> void:
 	player.world_node = world
@@ -86,9 +89,10 @@ func _physics_process(_delta: float) -> void:
 		if frame == SEGMENTS[i][0]:
 			segment_label.text = SEGMENTS[i][1]
 			var tp: Vector3 = SEGMENTS[i][2]
+			cam_offset = SEGMENTS[i][3]
 			player.teleport(tp)
 			# Snap camera to the new location.
-			camera.global_position = Vector3(tp.x, tp.y + 5, tp.z + 9)
+			camera.global_position = tp + cam_offset
 			# Clear buttons on teleport.
 			player.set_stick(0, 0)
 			player.set_buttons(0)
@@ -172,11 +176,8 @@ func _physics_process(_delta: float) -> void:
 	player.set_stick(sx, sy)
 	player.set_buttons(b)
 	
-	# Camera: fixed offset, pulled in if it would clip through the wall.
+	# Camera: follow with per-segment offset (guaranteed line-of-sight).
 	var p = player.global_position
-	var desired = Vector3(p.x, p.y + 5, p.z + 9)
-	# Keep camera out of the wall (z=14.5..15.5, x=-3..3).
-	if desired.z > 13.0 and desired.z < 17.0 and absf(desired.x) < 4.0:
-		desired.z = 13.0
-	camera.global_position = camera.global_position.lerp(desired, 0.15)
+	var desired = p + cam_offset
+	camera.global_position = camera.global_position.lerp(desired, 0.2)
 	camera.look_at(Vector3(p.x, p.y + 1, p.z))
