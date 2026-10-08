@@ -62,12 +62,11 @@
     asserts: [
         ActionSeen(action: "LedgeGrab"),
         ActionSeen(action: "LedgeClimbFast"),
-        // The climb must rise the body over the edge instead of traveling
-        // horizontally at hang height (y=240) and snapping up, which drove
-        // the head/shoulders through the ledge block. Frame accounting: the
-        // goto frame records LedgeClimbFast before its tick runs, so 7 of
-        // the 8 +20 rises land on frames carrying the action (240 -> 380);
-        // the 8th lands on the pull_up transition into Idle at y=400.
-        ActionEndPosY(action: "LedgeClimbFast", expected: 380.0, tol: 2.0),
+        // The climb must go up-then-over instead of traveling horizontally
+        // at hang height and snapping up, which drove the body through the
+        // ledge. It rises 5x32 to the top at the hang xz (30 outside the
+        // wall), travels 2x20 forward at the top level, then pull_up(+14)
+        // lands on the ledge. Last carrying frame is y=400 (ledge top).
+        ActionEndPosY(action: "LedgeClimbFast", expected: 400.0, tol: 2.0),
     ],
 )
