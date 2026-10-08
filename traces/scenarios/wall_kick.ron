@@ -58,5 +58,9 @@
     asserts: [
         // Ground-truth entry velocity (decomp set_mario_action_airborne ACT_WALL_KICK_AIR (62.0f)).
         ActionEntryVelY(action: "WallKickAir", expected: 62.0, tol: 1.0),
+        // Ground-truth entry speed: decomp raises forwardVel to at least 24
+        // (max(entry_fwd, 24)). Entry fwd here was ~0 after the bonk, so the
+        // minimum kicks in: 24.0.
+        ActionEntrySpeed(action: "WallKickAir", expected: 24.0, tol: 1.0),
     ],
 )

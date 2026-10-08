@@ -39,5 +39,8 @@
     asserts: [
         // Ground-truth entry velocity (decomp set_mario_action_airborne ACT_LONG_JUMP (30.0f)).
         ActionEntryVelY(action: "LongJump", expected: 30.0, tol: 1.0),
+        // Ground-truth entry speed: decomp multiplies forwardVel by 1.5,
+        // capped at 48. Entry fwd here is 31.60, so 31.60 * 1.5 = 47.40.
+        ActionEntrySpeed(action: "LongJump", expected: 47.4, tol: 1.0),
     ],
 )

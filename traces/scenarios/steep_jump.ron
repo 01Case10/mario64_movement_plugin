@@ -1,0 +1,57 @@
+(
+    id: "steep_jump",
+    tags: [
+        "air",
+        "jump",
+        "slope",
+    ],
+    geometry: [
+        Box((
+            min: (-4000.0, -100.0, -4000.0),
+            max: (4000.0, 0.0, 4000.0),
+            kind: 0,
+        )),
+        // 32-degree ramp (normal.y = 0.848 <= 0.866 steep-jump threshold
+        // for default floors). Mario walks uphill and jumps.
+        Ramp((
+            origin: (0.0, 0.0, 0.0),
+            dir: (0.0, 1.0),
+            length: 400.0,
+            height: 250.0,
+            width: 400.0,
+            kind: 0,
+        )),
+    ],
+    start: (
+        pos: (0, 31.25, 50),
+        yaw_deg: 0.0,
+        action: "Walking",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        Hold(
+            frames: 30,
+            stick: (0, 80),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, 80),
+            buttons: 1,
+        ),
+        Hold(
+            frames: 80,
+            stick: (0, 80),
+            buttons: 1,
+        ),
+    ],
+    compare: AirDefault,
+    asserts: [
+        ActionSeen(action: "SteepJump"),
+        // Ground-truth entry velocity: decomp ACT_STEEP_JUMP sets
+        // vel_y = 42 + 0.25 * forwardVel. Entry fwd here is 4.33,
+        // so 42 + 4.33/4 = 43.08.
+        ActionEntryVelY(action: "SteepJump", expected: 43.1, tol: 1.0),
+    ],
+)

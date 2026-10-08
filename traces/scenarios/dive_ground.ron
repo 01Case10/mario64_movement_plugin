@@ -36,4 +36,9 @@
         ),
     ],
     compare: AirDefault,
+    asserts: [
+        // Ground-truth entry speed: decomp ACT_DIVE adds 15 to forwardVel,
+        // capped at 48. Entry fwd here is 32.11, so 32.11 + 15 = 47.11.
+        ActionEntrySpeed(action: "Dive", expected: 47.1, tol: 1.0),
+    ],
 )

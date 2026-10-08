@@ -1,0 +1,42 @@
+(
+    id: "triple_jump",
+    tags: [
+        "air",
+        "jump",
+        "chain",
+    ],
+    geometry: [
+        Box((
+            min: (-4000.0, -100.0, -4000.0),
+            max: (4000.0, 0.0, 4000.0),
+            kind: 0,
+        )),
+    ],
+    start: (
+        pos: (0, 0, 0),
+        yaw_deg: 0.0,
+        action: "Idle",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        Hold(frames: 40, stick: (0, 80), buttons: 0),
+        Press(stick: (0, 80), buttons: 1),
+        Hold(frames: 25, stick: (0, 80), buttons: 1),
+        Hold(frames: 1, stick: (0, 80), buttons: 0),
+        Press(stick: (0, 80), buttons: 1),
+        Hold(frames: 33, stick: (0, 80), buttons: 1),
+        Hold(frames: 1, stick: (0, 80), buttons: 0),
+        Press(stick: (0, 80), buttons: 1),
+        Hold(frames: 80, stick: (0, 80), buttons: 1),
+    ],
+    compare: AirDefault,
+    asserts: [
+        ActionSeen(action: "DoubleJump"),
+        ActionSeen(action: "TripleJump"),
+        // Ground-truth entry velocity: decomp ACT_TRIPLE_JUMP sets
+        // vel_y = 69.0 (fixed, no forward-speed term).
+        ActionEntryVelY(action: "TripleJump", expected: 69.0, tol: 1.0),
+    ],
+)
