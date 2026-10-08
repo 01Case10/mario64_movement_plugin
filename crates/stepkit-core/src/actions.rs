@@ -43,9 +43,16 @@ impl<'a> ActionCx<'a> {
         self.input.intended_yaw()
     }
 
-    /// Stick magnitude in stick units.
+    /// Stick magnitude in stick units, with the squish penalty applied:
+    /// while squished the intended magnitude is quartered (the reference
+    /// quarters intendedMag while the squish timer runs).
     pub fn intended_magnitude(&self) -> f32 {
-        self.input.intended_mag()
+        let m = self.input.intended_mag();
+        if self.state.squish_timer > 0 {
+            m / 4.0
+        } else {
+            m
+        }
     }
 
     /// Raw (unreshaped) stick magnitude; used for thresholds the reference
@@ -131,6 +138,8 @@ impl ActionRegistry {
         r.register_builtin(ActionId::DIVE_SLIDE, ground::DiveSlide);
         r.register_builtin(ActionId::CROUCH_SLIDE, ground::CrouchSlide);
         r.register_builtin(ActionId::SLIDE_KICK_SLIDE, ground::SlideKickSlide);
+        r.register_builtin(ActionId::IN_QUICKSAND, ground::InQuicksand);
+        r.register_builtin(ActionId::QUICKSAND_JUMP_LAND, ground::QuicksandJumpLand);
         r.register_builtin(ActionId::JUMP, air::SingleJump);
         r.register_builtin(ActionId::DOUBLE_JUMP, air::DoubleJump);
         r.register_builtin(ActionId::TRIPLE_JUMP, air::TripleJump);
@@ -151,6 +160,9 @@ impl ActionRegistry {
         r.register_builtin(ActionId::FORWARD_AIR_KB, air::ForwardAirKb);
         r.register_builtin(ActionId::HARD_FORWARD_AIR_KB, air::ForwardAirKb);
         r.register_builtin(ActionId::LEDGE_GRAB, air::LedgeGrab);
+        r.register_builtin(ActionId::LEDGE_CLIMB_FAST, air::LedgeClimbFast);
+        r.register_builtin(ActionId::LEDGE_CLIMB_SLOW_1, air::LedgeClimbSlow1);
+        r.register_builtin(ActionId::LEDGE_CLIMB_SLOW_2, air::LedgeClimbSlow2);
         r.register_builtin(ActionId::FREEFALL, air::Freefall);
         r.register_builtin(ActionId::CROUCH, ground::Crouch);
         r.register_builtin(ActionId::CRAWL, ground::Crawl);

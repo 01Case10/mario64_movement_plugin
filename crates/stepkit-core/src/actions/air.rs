@@ -51,6 +51,16 @@ struct AirConfig {
     allow_pound: bool,
     /// Whether this action may ledge-grab (documented per action).
     can_ledge_grab: bool,
+    /// Whether the shared cancel set (water plunge, wall kick, dive,
+    /// pound) runs. Disabled for the dead fall (no input response).
+    allow_cancels: bool,
+}
+
+/// Track the peak height of the current airtime (for fall damage).
+fn track_peak(cx: &mut ActionCx) {
+    if cx.state.pos.y > cx.state.peak_height {
+        cx.state.peak_height = cx.state.pos.y;
+    }
 }
 
 /// Shared air cancels: B -> dive (speed > 28), Z -> ground pound.
@@ -79,8 +89,10 @@ fn air_cancels(cx: &mut ActionCx, prev_buttons: u16, cfg: &AirConfig) -> Option<
 
 /// Shared air physics + step. Returns `Some` on landing (or a cancel).
 fn air_common(cx: &mut ActionCx, prev_buttons: u16, cfg: &AirConfig) -> Option<ActionResult> {
-    if let Some(r) = air_cancels(cx, prev_buttons, cfg) {
-        return Some(r);
+    if cfg.allow_cancels {
+        if let Some(r) = air_cancels(cx, prev_buttons, cfg) {
+            return Some(r);
+        }
     }
     let p = cfg;
     // Air control: preserve momentum, apply accelerations additively.
@@ -125,12 +137,13 @@ fn air_common(cx: &mut ActionCx, prev_buttons: u16, cfg: &AirConfig) -> Option<A
     cx.state.vel.x = nfx * fwd + nfz * side;
     cx.state.vel.z = nfz * fwd - nfx * side;
     cx.state.forward_speed = fwd;
-    // Gravity applies after movement (below the step).
+    // Gravity applies after movement and collision.
     let vy_before_landing = cx.state.vel.y;
     let out = step_air(&cx.state, cx.world, cx.params);
     cx.state.pos = out.pos;
     cx.state.vel.y = out.vel_y;
     cx.state.floor_y = out.floor.map(|f| f.y);
+    track_peak(cx);
     if out.wall_hit {
         cx.state.wall_hit = true;
         cx.state.wall_normal = out.wall_normal;
@@ -220,10 +233,85 @@ fn air_common(cx: &mut ActionCx, prev_buttons: u16, cfg: &AirConfig) -> Option<A
     None
 }
 
+/// Apply damage and emit the event.
+fn apply_damage(cx: &mut ActionCx, amount: i32) {
+    cx.state.health -= amount;
+    cx.events.push(Event::Damaged { amount });
+}
+
+/// Death simplification: freefall with arg 2 = "dead fall" (no input
+/// response). The landing routes to idle, where input stays ignored while
+/// health < 0x100. Full death warp is out of scope.
+fn enter_dead_fall(cx: &mut ActionCx) -> ActionResult {
+    cx.timeline.slot = slot::FREEFALL;
+    cx.goto(ActionId::FREEFALL, 2)
+}
+
+/// Fall damage + squish, assessed on landing when the impact speed exceeds
+/// 55 (vy < -55). Returns `Some` when the landing is replaced by a damage
+/// outcome. (decomp-derived fall-damage model)
+///
+/// - fall height > 3000: 16 damage + hard-knockback landing (the hard
+///   backward air knockback for now; Phase E routes its landing to the
+///   hard ground knockback).
+/// - fall height > 1150 on a non-slippery floor (Default/NotSlippery
+///   class): 8 damage + 30 frames of squish.
+/// - health < 0x100 after damage: dead fall.
+fn check_fall_damage(cx: &mut ActionCx, fall_speed: f32) -> Option<ActionResult> {
+    if fall_speed <= 55.0 {
+        return None;
+    }
+    let fall_height = cx.state.peak_height - cx.state.pos.y;
+    if fall_height > 3000.0 {
+        apply_damage(cx, 16);
+        if cx.state.health < 0x100 {
+            return Some(enter_dead_fall(cx));
+        }
+        // Hard-knockback landing: hard backward air knockback, arg 1 =
+        // hard (Phase E consumes the flag).
+        cx.state.forward_speed = -15.0;
+        set_air_velocity(cx, 40.0);
+        cx.timeline.slot = slot::AIR_KNOCKBACK;
+        return Some(cx.goto(ActionId::HARD_BACKWARD_AIR_KB, 1));
+    }
+    if fall_height > 1150.0 {
+        // Non-slippery floor (Default/NotSlippery class): damage + squish.
+        // Queried live: the ground-pound landing path doesn't refresh
+        // floor_kind before this runs.
+        let non_slippery = cx.world.find_floor(cx.state.pos, 1.0).is_some_and(|f| {
+            matches!(
+                crate::world::SurfaceClass::of(f.kind),
+                crate::world::SurfaceClass::Default | crate::world::SurfaceClass::NotSlippery
+            )
+        });
+        if non_slippery {
+            apply_damage(cx, 8);
+            if cx.state.health < 0x100 {
+                return Some(enter_dead_fall(cx));
+            }
+            cx.state.squish_timer = 30;
+        }
+    }
+    None
+}
+
 /// Route a touchdown to the per-action landing (or slide) matching
-/// `land_from`. The impact speed travels as the goto arg so the landing
-/// can record it for fall damage (Phase D).
+/// `land_from`. Fall damage is assessed first; the impact speed travels as
+/// the goto arg so the landing can record it.
 fn enter_landing_for(cx: &mut ActionCx, fall_speed: f32) -> ActionResult {
+    if let Some(r) = check_fall_damage(cx, fall_speed) {
+        cx.state.peak_height = 0.0;
+        return r;
+    }
+    cx.state.peak_height = 0.0;
+    // Dead: collapse to idle (input stays ignored while health < 0x100).
+    if cx.state.health < 0x100 {
+        return cx.goto(ActionId::IDLE, 2);
+    }
+    // Deep quicksand landing: the escape sequence.
+    if cx.state.quicksand_depth >= 11.0 {
+        return cx.goto(ActionId::QUICKSAND_JUMP_LAND, 0);
+    }
     let arg = fall_speed.max(0.0) as u32;
     match cx.state.land_from {
         ActionId::JUMP => cx.goto(ActionId::JUMP_LAND, arg),
@@ -257,14 +345,31 @@ fn base_air_config() -> AirConfig {
         allow_dive: true,
         allow_pound: true,
         can_ledge_grab: true,
+        allow_cancels: true,
     }
+}
+
+/// Jump entry velocity, halved while waist-deep in quicksand (depth > 1)
+/// and halved while squished. (decomp-derived quicksand/squish penalties)
+fn adjusted_jump_vy(cx: &ActionCx, vy: f32) -> f32 {
+    let mut v = vy;
+    if cx.state.quicksand_depth > 1.0 {
+        v *= 0.5;
+    }
+    if cx.state.squish_timer > 0 {
+        v *= 0.5;
+    }
+    v
 }
 
 /// Shared jump entry: vertical speed = 42 + forward_speed/4, forward *= 0.8.
 /// (wiki:Single Jump@19309)
 pub fn enter_jump(cx: &mut ActionCx) -> ActionResult {
     let p = cx.params;
-    let vy = p.jump_vertical_base + cx.state.forward_speed * p.jump_vertical_forward_factor;
+    let vy = adjusted_jump_vy(
+        cx,
+        p.jump_vertical_base + cx.state.forward_speed * p.jump_vertical_forward_factor,
+    );
     cx.state.forward_speed *= p.jump_forward_retain;
     set_air_velocity(cx, vy);
     cx.timeline.slot = slot::JUMP;
@@ -276,7 +381,7 @@ pub fn enter_jump(cx: &mut ActionCx) -> ActionResult {
 /// (wiki:Double Jump@18964)
 pub fn enter_double_jump(cx: &mut ActionCx) -> ActionResult {
     // spec: jump.double_vertical_base (verified: wiki:Double Jump@18964)
-    let vy = 52.0 + cx.state.forward_speed * 0.25;
+    let vy = adjusted_jump_vy(cx, 52.0 + cx.state.forward_speed * 0.25);
     cx.state.forward_speed *= 0.8;
     set_air_velocity(cx, vy);
     cx.timeline.slot = slot::DOUBLE_JUMP;
@@ -288,7 +393,7 @@ pub fn enter_double_jump(cx: &mut ActionCx) -> ActionResult {
 /// (wiki:Triple Jump@19300)
 pub fn enter_triple_jump(cx: &mut ActionCx) -> ActionResult {
     // spec: jump.triple_vertical (verified: wiki:Triple Jump@19300)
-    let vy = 69.0;
+    let vy = adjusted_jump_vy(cx, 69.0);
     cx.state.forward_speed *= 0.8;
     set_air_velocity(cx, vy);
     cx.timeline.slot = slot::TRIPLE_JUMP;
@@ -300,9 +405,10 @@ pub fn enter_triple_jump(cx: &mut ActionCx) -> ActionResult {
 pub fn enter_backflip(cx: &mut ActionCx) -> ActionResult {
     // spec: jump.backflip_forward / jump.backflip_vertical (verified)
     cx.state.forward_speed = -16.0;
-    set_air_velocity(cx, 62.0);
+    let vy = adjusted_jump_vy(cx, 62.0);
+    set_air_velocity(cx, vy);
     cx.timeline.slot = slot::BACKFLIP;
-    cx.events.push(Event::Jumped { velocity_y: 62.0 });
+    cx.events.push(Event::Jumped { velocity_y: vy });
     cx.goto(ActionId::BACKFLIP, 0)
 }
 
@@ -314,9 +420,10 @@ pub fn enter_side_flip(cx: &mut ActionCx) -> ActionResult {
         cx.state.face_yaw = iy;
     }
     cx.state.forward_speed = 8.0;
-    set_air_velocity(cx, 62.0);
+    let vy = adjusted_jump_vy(cx, 62.0);
+    set_air_velocity(cx, vy);
     cx.timeline.slot = slot::SIDE_FLIP;
-    cx.events.push(Event::Jumped { velocity_y: 62.0 });
+    cx.events.push(Event::Jumped { velocity_y: vy });
     cx.goto(ActionId::SIDE_FLIP, 0)
 }
 
@@ -324,7 +431,7 @@ pub fn enter_side_flip(cx: &mut ActionCx) -> ActionResult {
 /// (decomp-derived; gravity -2 documented: wiki:Gravity@20294)
 pub fn enter_long_jump(cx: &mut ActionCx) -> ActionResult {
     // spec: jump.longjump_vertical / jump.longjump_forward_scale
-    let vy = 30.0;
+    let vy = adjusted_jump_vy(cx, 30.0);
     cx.state.forward_speed = (cx.state.forward_speed * 1.5).min(48.0);
     set_air_velocity(cx, vy);
     cx.timeline.slot = slot::LONG_JUMP;
@@ -522,13 +629,22 @@ air_action!(
 );
 
 /// Freefall: walked off a ledge. Dive and pound allowed (verify for pound).
+/// Arg 2 = dead fall (health < 0x100): no input response.
 pub struct Freefall;
 impl ActionHandler for Freefall {
     fn name(&self) -> &'static str {
         "Freefall"
     }
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
-        if let Some(r) = air_common(cx, prev_buttons, &base_air_config()) {
+        let cfg = if cx.arg() == 2 {
+            AirConfig {
+                allow_cancels: false,
+                ..base_air_config()
+            }
+        } else {
+            base_air_config()
+        };
+        if let Some(r) = air_common(cx, prev_buttons, &cfg) {
             return r;
         }
         cx.timeline.slot = slot::FREEFALL;
@@ -558,6 +674,7 @@ impl ActionHandler for GroundPound {
             if t <= 10 {
                 cx.state.pos.y += 22.0 - 2.0 * t as f32;
             }
+            track_peak(cx);
             cx.state.forward_speed = 0.0;
             cx.state.vel = Vec3::new(0.0, -50.0, 0.0);
             if t > 14 {
@@ -577,6 +694,7 @@ impl ActionHandler for GroundPound {
         cx.state.pos = out.pos;
         cx.state.vel.y = out.vel_y;
         cx.state.floor_y = out.floor.map(|f| f.y);
+        track_peak(cx);
         if out.wall_hit {
             // Bonk off the wall into a backwards air knockback.
             let n = out.wall_normal;
@@ -594,6 +712,11 @@ impl ActionHandler for GroundPound {
             let fall_speed = out.fall_speed;
             cx.events.push(Event::Landed { fall_speed });
             cx.state.land_from = ActionId::GROUND_POUND;
+            if let Some(r) = check_fall_damage(cx, fall_speed) {
+                cx.state.peak_height = 0.0;
+                return r;
+            }
+            cx.state.peak_height = 0.0;
             cx.timeline.slot = super::ground::slot::LAND;
             return cx.goto(ActionId::FREEFALL_LAND, fall_speed.max(0.0) as u32);
         }
@@ -606,6 +729,7 @@ impl ActionHandler for GroundPound {
 /// to at least 24, vertical speed `vy`. Routes to WALL_KICK_AIR.
 fn enter_wall_kick_flight(cx: &mut ActionCx, wall_normal: glam::Vec3, vy: f32) -> ActionResult {
     // spec: wall_kick.forward_min / wall_kick.vertical (decomp-derived)
+    let vy = adjusted_jump_vy(cx, vy);
     let away = crate::trig::atan2(wall_normal.x, wall_normal.z);
     cx.state.face_yaw = away;
     cx.state.forward_speed = cx.state.forward_speed.max(24.0);
@@ -688,7 +812,7 @@ pub fn enter_forward_air_kb(cx: &mut ActionCx, hard: bool) -> ActionResult {
 /// is scaled by 0.75, re-aiming motion along the slope.
 pub fn enter_steep_jump(cx: &mut ActionCx) -> ActionResult {
     // spec: jump.steep_vertical (decomp-derived)
-    let vy = 42.0 + cx.state.forward_speed * 0.25;
+    let vy = adjusted_jump_vy(cx, 42.0 + cx.state.forward_speed * 0.25);
     let (fx, fz) = cx.forward_xz();
     let fwd = cx.state.vel.x * fx + cx.state.vel.z * fz;
     let side = (cx.state.vel.x * fz - cx.state.vel.z * fx) * 0.75;
@@ -704,6 +828,13 @@ pub fn enter_steep_jump(cx: &mut ActionCx) -> ActionResult {
 /// - wall 30 units above Mario, no wall 150 units above,
 /// - then a top-down floor search from 60 units into the wall and 160 up.
 fn try_ledge_grab(cx: &mut ActionCx, wall_normal: glam::Vec3) -> Option<ActionResult> {
+    // The wall must have displaced Mario against his velocity: the impact
+    // velocity (still intact at this point in the wall handling) must
+    // oppose the wall normal, which points away from the wall.
+    // (decomp-derived ledge-grab condition)
+    if cx.state.vel.x * wall_normal.x + cx.state.vel.z * wall_normal.z > 0.0 {
+        return None;
+    }
     // Probe with Mario's own radius (+1 for the contact boundary): "is there
     // a wall at this point", not "within reach".
     let probe_r = cx.params.radius + 1.0;
@@ -788,6 +919,7 @@ impl ActionHandler for AirHitWall {
             cx.state.pos = out.pos;
             cx.state.vel.y = out.vel_y;
             cx.state.floor_y = out.floor.map(|f| f.y);
+            track_peak(cx);
             if let Some(f) = out.floor {
                 let fall_speed = out.fall_speed;
                 cx.events.push(Event::Landed { fall_speed });
@@ -911,6 +1043,7 @@ impl ActionHandler for SteepJump {
         cx.state.pos = out.pos;
         cx.state.vel.y = out.vel_y;
         cx.state.floor_y = out.floor.map(|f| f.y);
+        track_peak(cx);
         if out.wall_hit {
             // Stop dead; the next ground tick sorts out the floor.
             cx.state.vel.x = 0.0;
@@ -939,34 +1072,131 @@ impl ActionHandler for SteepJump {
     }
 }
 
-/// Ledge grab: hanging on the ledge. A climbs up, Z drops.
-/// Simplified from wiki:Ledge Grab@19518 (no slow-climb variants in v1).
+/// Ledge grab: hanging on the ledge (facing the wall).
+///
+/// - A with 160 units of headroom: fast climb.
+/// - Z: let go, dropping away from the wall.
+/// - Stick toward the wall at 10+ hang frames: slow climb.
+/// - Stick more than 90 deg from the facing (away/sideways): let go.
+/// - Ledge floor steeper than normal.y 0.9063: release.
+///
+/// (decomp-derived ledge behavior)
 pub struct LedgeGrab;
 impl ActionHandler for LedgeGrab {
     fn name(&self) -> &'static str {
         "LedgeGrab"
     }
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
-        // A -> climb onto the ledge.
-        if cx.pressed(buttons::A, prev_buttons) {
-            // v1: stand up in place; the ground step keeps us on the floor.
-            cx.timeline.slot = super::ground::slot::IDLE;
-            return cx.goto(ActionId::IDLE, 0);
+        // Release: the ledge floor got too steep.
+        // spec: ledge.release_slope_y (decomp-derived)
+        if let Some(f) = cx.world.find_floor(cx.state.pos, 1.0) {
+            if f.normal.y < 0.9063 {
+                cx.timeline.slot = slot::FREEFALL;
+                return cx.goto(ActionId::FREEFALL, 0);
+            }
         }
-        // Z -> let go: drop away from the wall.
+        // A: fast climb, needs 160 units of headroom.
+        if cx.pressed(buttons::A, prev_buttons)
+            && cx.world.find_ceiling(cx.state.pos, 160.0).is_none()
+        {
+            return cx.goto(ActionId::LEDGE_CLIMB_FAST, 0);
+        }
+        // Z: let go, dropping away from the wall.
         if cx.pressed(buttons::Z, prev_buttons) {
-            cx.state.forward_speed = -8.0; // spec: ledge.drop_speed (verified)
-            cx.state.vel = glam::Vec3::ZERO;
-            cx.timeline.slot = slot::FREEFALL;
-            return cx.goto(ActionId::FREEFALL, 0);
+            return ledge_let_go(cx);
         }
-        // Auto-climb after the hang timer (simplified).
-        if cx.state.action_timer >= 10 {
-            cx.timeline.slot = super::ground::slot::IDLE;
-            return cx.goto(ActionId::IDLE, 0);
+        // Stick: toward the wall climbs (after the hang timer), anything
+        // more than 90 deg from the facing lets go.
+        if let Some(iy) = cx.intended_yaw() {
+            let from_facing = cx.state.face_yaw.diff_to(iy).abs();
+            if from_facing <= 0x4000 {
+                if cx.state.action_timer >= 10 {
+                    return cx.goto(ActionId::LEDGE_CLIMB_SLOW_1, 0);
+                }
+            } else {
+                return ledge_let_go(cx);
+            }
         }
         cx.state.vel = glam::Vec3::ZERO;
         cx.timeline.slot = slot::LEDGE_GRAB;
+        ActionResult::Stay
+    }
+}
+
+/// Let go of the ledge: drop with forward speed -8 (away from the wall,
+/// since the facing points at the wall). The grab already snapped Mario to
+/// the ledge point 60 units out from the wall, so the position stands.
+fn ledge_let_go(cx: &mut ActionCx) -> ActionResult {
+    cx.state.forward_speed = -8.0; // spec: ledge.drop_speed (verified)
+    cx.state.vel = glam::Vec3::ZERO;
+    cx.timeline.slot = slot::FREEFALL;
+    cx.goto(ActionId::FREEFALL, 0)
+}
+
+/// Pull up onto the ledge after a climb: move forward (toward the wall,
+/// onto the ledge top) and snap to the floor, then stand.
+fn ledge_pull_up(cx: &mut ActionCx, distance: f32) -> ActionResult {
+    let (fx, fz) = cx.forward_xz();
+    cx.state.pos.x += fx * distance;
+    cx.state.pos.z += fz * distance;
+    if let Some(f) = cx.world.find_floor(cx.state.pos, 10.0) {
+        cx.state.pos.y = f.y;
+        cx.state.floor_y = Some(f.y);
+    }
+    cx.timeline.slot = super::ground::slot::IDLE;
+    cx.goto(ActionId::IDLE, 0)
+}
+
+/// Fast ledge climb: an 8-frame pull-up onto the ledge.
+pub struct LedgeClimbFast;
+impl ActionHandler for LedgeClimbFast {
+    fn name(&self) -> &'static str {
+        "LedgeClimbFast"
+    }
+    fn tick(&self, cx: &mut ActionCx, _prev_buttons: u16) -> ActionResult {
+        // 60 units over 8 frames lands fully on the ledge top.
+        let (fx, fz) = cx.forward_xz();
+        cx.state.pos.x += fx * 7.5;
+        cx.state.pos.z += fz * 7.5;
+        cx.timeline.slot = slot::LEDGE_GRAB;
+        if cx.state.action_timer >= 8 {
+            return ledge_pull_up(cx, 0.0);
+        }
+        ActionResult::Stay
+    }
+}
+
+/// Slow ledge climb, part 1: at timer 17 the climb transitions to part 2.
+pub struct LedgeClimbSlow1;
+impl ActionHandler for LedgeClimbSlow1 {
+    fn name(&self) -> &'static str {
+        "LedgeClimbSlow1"
+    }
+    fn tick(&self, cx: &mut ActionCx, _prev_buttons: u16) -> ActionResult {
+        cx.timeline.slot = slot::LEDGE_GRAB;
+        if cx.state.action_timer >= 17 {
+            return cx.goto(ActionId::LEDGE_CLIMB_SLOW_2, 0);
+        }
+        ActionResult::Stay
+    }
+}
+
+/// Slow ledge climb, part 2: at 11 frames in (28 total) any input pulls
+/// up 14 units forward onto the ledge. A long no-input stall falls back
+/// to idle so the character can never soft-lock mid-climb.
+pub struct LedgeClimbSlow2;
+impl ActionHandler for LedgeClimbSlow2 {
+    fn name(&self) -> &'static str {
+        "LedgeClimbSlow2"
+    }
+    fn tick(&self, cx: &mut ActionCx, _prev_buttons: u16) -> ActionResult {
+        cx.timeline.slot = slot::LEDGE_GRAB;
+        if cx.state.action_timer >= 11 && (cx.input.stick_held() || cx.input.buttons != 0) {
+            return ledge_pull_up(cx, 14.0);
+        }
+        if cx.state.action_timer >= 120 {
+            return ledge_pull_up(cx, 14.0);
+        }
         ActionResult::Stay
     }
 }
