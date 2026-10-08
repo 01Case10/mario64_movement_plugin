@@ -516,8 +516,11 @@ fn check_slide(cx: &mut ActionCx) -> Option<ActionResult> {
     None
 }
 
-/// Butt slide entry: keep speed and facing.
+/// Butt slide entry: initialize slide velocity from current motion.
 fn enter_butt_slide(cx: &mut ActionCx) -> ActionResult {
+    // Capture current horizontal velocity as the slide vector.
+    cx.state.slide_vel_x = cx.state.vel.x;
+    cx.state.slide_vel_z = cx.state.vel.z;
     cx.timeline.slot = slot::BUTT_SLIDE;
     cx.goto(ActionId::BUTT_SLIDE, 0)
 }
@@ -554,24 +557,54 @@ impl ActionHandler for ButtSlide {
             dh.0 /= dh_len;
             dh.1 /= dh_len;
         }
-        let (fx, fz) = cx.forward_xz();
-        let along = fx * dh.0 + fz * dh.1;
-        // spec: slide.downhill_accel / slide.friction (verify)
+        // Slope accelerates the slide vector downhill.
         if steep > 0.02 {
-            cx.state.forward_speed +=
-                cx.params.slide_downhill_accel * steep * along.signum().max(0.2);
-        } else {
-            cx.state.forward_speed = (cx.state.forward_speed - 1.0).max(0.0);
+            let accel = cx.params.slide_downhill_accel * steep;
+            cx.state.slide_vel_x += dh.0 * accel;
+            cx.state.slide_vel_z += dh.1 * accel;
         }
-        cx.state.forward_speed = cx.state.forward_speed.min(48.0);
-        // Limited steering while sliding (verify rate).
+        // Input steers the slide vector (rotates, does not replace).
         if let Some(iy) = cx.intended_yaw() {
+            let mag = cx.intended_magnitude() as f32 / 32.0;
+            // Rotate slide vector toward input by small amount.
+            let (ifx, ifz) = {
+                let yaw_rad = iy.0 as f32 / 65536.0 * std::f32::consts::TAU;
+                (yaw_rad.sin(), yaw_rad.cos())
+            };
+            // Blend slide direction toward input (5% per frame, scaled by mag).
+            let blend = 0.05 * mag;
+            let cur_len = (cx.state.slide_vel_x * cx.state.slide_vel_x
+                + cx.state.slide_vel_z * cx.state.slide_vel_z).sqrt().max(0.01);
+            let cur_dx = cx.state.slide_vel_x / cur_len;
+            let cur_dz = cx.state.slide_vel_z / cur_len;
+            let new_dx = cur_dx + (ifx - cur_dx) * blend;
+            let new_dz = cur_dz + (ifz - cur_dz) * blend;
+            let new_len = (new_dx * new_dx + new_dz * new_dz).sqrt().max(0.01);
+            cx.state.slide_vel_x = new_dx / new_len * cur_len;
+            cx.state.slide_vel_z = new_dz / new_len * cur_len;
+            // Face turns toward input independently.
             cx.state.face_yaw = cx.state.face_yaw.approach(iy, 0x400);
         } else if dh_len > 1e-4 {
             let dh_yaw = crate::trig::atan2(dh.0, dh.1);
             cx.state.face_yaw = cx.state.face_yaw.approach(dh_yaw, 0x400);
         }
-        if cx.state.forward_speed < 2.0 {
+        // Friction.
+        let speed = (cx.state.slide_vel_x * cx.state.slide_vel_x
+            + cx.state.slide_vel_z * cx.state.slide_vel_z).sqrt();
+        if speed > 0.01 {
+            let friction = 0.98; // (verify)
+            cx.state.slide_vel_x *= friction;
+            cx.state.slide_vel_z *= friction;
+        }
+        let speed = (cx.state.slide_vel_x * cx.state.slide_vel_x
+            + cx.state.slide_vel_z * cx.state.slide_vel_z).sqrt().min(48.0);
+        // Update vel from slide vector (not from facing).
+        cx.state.vel.x = cx.state.slide_vel_x;
+        cx.state.vel.z = cx.state.slide_vel_z;
+        // Forward speed is projection onto facing (for compatibility).
+        let (fx, fz) = cx.forward_xz();
+        cx.state.forward_speed = cx.state.vel.x * fx + cx.state.vel.z * fz;
+        if speed < 2.0 {
             if cx.input.stick_held() {
                 return enter_walking(cx);
             }

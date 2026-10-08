@@ -66,6 +66,8 @@ pub fn state_from_frame(f: &TraceFrame) -> CharacterState {
         pos: Vec3::new(f.pos_x, f.pos_y, f.pos_z),
         vel: Vec3::new(f.vel_x, f.vel_y, f.vel_z),
         forward_speed: f.fwd_speed,
+        slide_vel_x: 0.0,
+        slide_vel_z: 0.0,
         face_yaw: Angle(f.face_yaw),
         face_pitch: Angle(f.face_pitch),
         face_roll: Angle(f.face_roll),

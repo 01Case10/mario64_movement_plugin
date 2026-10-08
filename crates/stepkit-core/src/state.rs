@@ -113,6 +113,9 @@ pub struct CharacterState {
     pub vel: Vec3,
     /// Signed speed along the facing direction.
     pub forward_speed: f32,
+    /// Sliding velocity vector (independent of facing for authentic slides).
+    pub slide_vel_x: f32,
+    pub slide_vel_z: f32,
     /// Facing yaw / pitch / roll.
     pub face_yaw: Angle,
     pub face_pitch: Angle,
@@ -150,6 +153,8 @@ impl Default for CharacterState {
             pos: Vec3::ZERO,
             vel: Vec3::ZERO,
             forward_speed: 0.0,
+            slide_vel_x: 0.0,
+            slide_vel_z: 0.0,
             face_yaw: Angle::ZERO,
             face_pitch: Angle::ZERO,
             face_roll: Angle::ZERO,
@@ -183,6 +188,8 @@ impl CharacterState {
             v.to_bits().hash(&mut h);
         }
         self.forward_speed.to_bits().hash(&mut h);
+        self.slide_vel_x.to_bits().hash(&mut h);
+        self.slide_vel_z.to_bits().hash(&mut h);
         self.face_yaw.0.hash(&mut h);
         self.face_pitch.0.hash(&mut h);
         self.face_roll.0.hash(&mut h);

@@ -75,30 +75,34 @@ fn air_common(cx: &mut ActionCx, prev_buttons: u16, cfg: &AirConfig) -> Option<A
         return Some(r);
     }
     let p = cfg;
-    // Air control: forward drag, stick acceleration, sideways velocity.
-    // (Behavioral model: forwardVel approaches 0, stick adds forward/sideways.)
-    let mut fwd = cx.state.forward_speed;
-    // Approach 0 by 0.35.
+    // Air control: preserve momentum, apply accelerations additively.
+    // (Behavioral: new vel = existing momentum + fwd accel + side accel + drag.)
+    let (fx, fz) = cx.forward_xz();
+    // Decompose existing velocity into forward and sideways components.
+    let mut fwd = cx.state.vel.x * fx + cx.state.vel.z * fz;
+    let mut side = cx.state.vel.x * fz - cx.state.vel.z * fx;
+    // Forward drag toward zero.
     if fwd > 0.0 {
         fwd = (fwd - 0.35).max(0.0);
     } else if fwd < 0.0 {
         fwd = (fwd + 0.35).min(0.0);
     }
-    let mut sideways = 0.0;
+    // Sideways drag (weaker).
+    side *= 0.95;
     if let Some(iy) = cx.intended_yaw() {
         let mag = cx.intended_magnitude() as f32 / 32.0;
         if mag > 0.01 {
             let dyaw = iy.diff_to(cx.state.face_yaw);
             let dyaw_rad = dyaw as f32 / 65536.0 * std::f32::consts::TAU;
-            // Forward: 1.5 * cos(dYaw) * mag. Sideways: 10.0 * sin(dYaw) * mag.
+            // Forward accel: 1.5 * cos(dYaw) * mag. Side accel: 10.0 * sin(dYaw) * mag.
             fwd += mag * dyaw_rad.cos() * 1.5;
-            sideways = mag * dyaw_rad.sin() * 10.0;
-            // Turn facing: 512 * sin(dYaw) * mag (in angle units).
+            side += mag * dyaw_rad.sin() * 10.0;
+            // Turn facing independently (does not rotate velocity).
             let turn = Angle((512.0 * dyaw_rad.sin() * mag) as i16);
             cx.state.face_yaw = cx.state.face_yaw.wrapping_add(turn);
         }
     }
-    // Speed drag and backward recovery.
+    // High-speed drag and backward recovery.
     let drag_threshold = p.air_drag_threshold;
     if fwd > drag_threshold {
         fwd -= 1.0;
@@ -106,13 +110,12 @@ fn air_common(cx: &mut ActionCx, prev_buttons: u16, cfg: &AirConfig) -> Option<A
     if fwd < -16.0 {
         fwd += 2.0;
     }
+    // Recompose velocity from components (facing may have changed).
+    let (nfx, nfz) = cx.forward_xz();
+    cx.state.vel.x = nfx * fwd + nfz * side;
+    cx.state.vel.z = nfz * fwd - nfx * side;
     cx.state.forward_speed = fwd;
-    // Construct velocity from forward + sideways components.
-    let (fx, fz) = cx.forward_xz();
-    // Right vector: (fz, -fx) for yaw (sin, cos).
-    cx.state.vel.x = fx * fwd + fz * sideways;
-    cx.state.vel.z = fz * fwd - fx * sideways;
-    // Gravity applies after movement (moved below the step).
+    // Gravity applies after movement (below the step).
     let vy_before_landing = cx.state.vel.y;
     let out = step_air(&cx.state, cx.world, cx.params);
     cx.state.pos = out.pos;
@@ -125,8 +128,37 @@ fn air_common(cx: &mut ActionCx, prev_buttons: u16, cfg: &AirConfig) -> Option<A
             normal_yaw: crate::trig::atan2(out.wall_normal.x, out.wall_normal.z),
         });
         cx.state.wall_kick_timer = 10; // spec: wall.kick_window (verify)
-                                       // Dive into a wall -> bonk -> backwards air knockback.
-                                       // (wiki:Dive@19303; numbers (verify))
+        // Speed-dependent wall response.
+        // (Behavioral: soft stop, normal bonk, high-speed knockback.)
+        let speed = (cx.state.vel.x * cx.state.vel.x
+            + cx.state.vel.z * cx.state.vel.z).sqrt();
+        let n = out.wall_normal;
+        // Remove into-wall velocity component (reflect).
+        let dot = cx.state.vel.x * n.x + cx.state.vel.z * n.z;
+        if dot < 0.0 {
+            // Reflect the into-wall component.
+            cx.state.vel.x -= 2.0 * dot * n.x;
+            cx.state.vel.z -= 2.0 * dot * n.z;
+        }
+        if speed >= 38.0 {
+            // High-speed impact -> backwards air knockback.
+            return Some(enter_air_knockback(cx, out.wall_normal));
+        } else if speed > 16.0 {
+            // Normal bonk: reduce speed, stay in air.
+            let scale = 0.5; // (verify)
+            cx.state.vel.x *= scale;
+            cx.state.vel.z *= scale;
+            // Update forward_speed to match.
+            let (fx, fz) = cx.forward_xz();
+            cx.state.forward_speed = cx.state.vel.x * fx + cx.state.vel.z * fz;
+        } else {
+            // Soft stop: kill into-wall motion, keep tangential.
+            // (Velocity already reflected above; just damp.)
+            cx.state.vel.x *= 0.8;
+            cx.state.vel.z *= 0.8;
+        }
+        // Dive into a wall -> bonk -> backwards air knockback.
+        // (wiki:Dive@19303; numbers (verify))
         if cx.state.action == ActionId::DIVE {
             return Some(enter_air_knockback(cx, out.wall_normal));
         }
