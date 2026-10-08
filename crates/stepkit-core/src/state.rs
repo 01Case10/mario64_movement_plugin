@@ -197,6 +197,10 @@ impl ActionId {
     /// decays over 32 frames.
     /// spec: actions.ground_bonk (verified: decomp ACT_GROUND_BONK)
     pub const GROUND_BONK: ActionId = ActionId(0x00020466);
+    /// Water jump: A near the surface while swimming. vy = 62, forward
+    /// speed raised to at least 15; walls slide (forward reset to 15).
+    /// spec: actions.water_jump (verified: decomp ACT_WATER_JUMP)
+    pub const WATER_JUMP: ActionId = ActionId(0x01000889);
 
     /// Custom action IDs start here; the registry enforces the range.
     pub const CUSTOM_BASE: u32 = 0x0100_0000;
@@ -275,6 +279,10 @@ pub struct CharacterState {
     /// Slide speed-cap latch: the 100-unit cap applies one frame late, so
     /// a slide may exceed it for exactly one tick.
     pub slide_over_cap: bool,
+    /// Swim strength for the breaststroke chain: 160 default, +10 per
+    /// chained stroke, capped at 280. Swim speed = strength / 10.
+    /// spec: swim.strength_default (verified: decomp-derived)
+    pub swim_strength: u16,
     /// Gravity direction. Fixed to +Y in v1 (see open decision 7); stored so
     /// planetary gravity can be added later without rewriting every action.
     pub up: Vec3,
@@ -311,6 +319,7 @@ impl Default for CharacterState {
             peak_height: 0.0,
             quicksand_depth: 0.0,
             slide_over_cap: false,
+            swim_strength: 160, // spec: swim.strength_default
             up: Vec3::Y,
             warped: false,
         }
@@ -354,6 +363,7 @@ impl CharacterState {
         self.peak_height.to_bits().hash(&mut h);
         self.quicksand_depth.to_bits().hash(&mut h);
         self.slide_over_cap.hash(&mut h);
+        self.swim_strength.hash(&mut h);
         h.finish()
     }
 }

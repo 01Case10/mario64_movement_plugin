@@ -151,6 +151,7 @@ mod tests {
             quicksand_depth: 0.0,
             peak_height: 0.0,
             slide_over_cap: 0,
+            swim_strength: 160,
             anim_slot: String::new(),
             anim_frame: 0,
         }

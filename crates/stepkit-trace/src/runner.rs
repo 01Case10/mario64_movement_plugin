@@ -80,6 +80,7 @@ pub fn state_from_frame(f: &TraceFrame) -> CharacterState {
         peak_height: f.peak_height,
         quicksand_depth: f.quicksand_depth,
         slide_over_cap: f.slide_over_cap != 0,
+        swim_strength: f.swim_strength,
         action_state: f.action_state,
         action_timer: f.action_timer,
         action_arg: f.action_arg,
@@ -138,6 +139,7 @@ fn frame_from_state(
         quicksand_depth: state.quicksand_depth,
         peak_height: state.peak_height,
         slide_over_cap: state.slide_over_cap as u8,
+        swim_strength: state.swim_strength,
         anim_slot: format!("slot_{}", timeline.slot),
         anim_frame: timeline.frame,
     }

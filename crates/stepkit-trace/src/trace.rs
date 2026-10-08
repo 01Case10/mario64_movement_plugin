@@ -41,6 +41,7 @@ pub struct TraceFrame {
     pub quicksand_depth: f32,
     pub peak_height: f32,
     pub slide_over_cap: u8,
+    pub swim_strength: u16,
     pub anim_slot: String,
     pub anim_frame: u32,
 }
@@ -118,6 +119,7 @@ mod tests {
             quicksand_depth: 0.0,
             peak_height: 0.0,
             slide_over_cap: 0,
+            swim_strength: 160,
             anim_slot: "idle".into(),
             anim_frame: 0,
         }

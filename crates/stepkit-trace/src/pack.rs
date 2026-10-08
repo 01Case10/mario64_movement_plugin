@@ -6,7 +6,7 @@
 
 use crate::trace::TraceFrame;
 
-const MAGIC: &[u8; 8] = b"STPKTRC\x05"; // v5: added health, squish_timer, quicksand_depth, peak_height, slide_over_cap
+const MAGIC: &[u8; 8] = b"STPKTRC\x06"; // v6: added swim_strength
 
 /// Pack frames into the binary format.
 pub fn pack_frames(frames: &[TraceFrame]) -> Vec<u8> {
@@ -55,6 +55,7 @@ pub fn pack_frames(frames: &[TraceFrame]) -> Vec<u8> {
         out.extend_from_slice(&f.quicksand_depth.to_le_bytes());
         out.extend_from_slice(&f.peak_height.to_le_bytes());
         out.push(f.slide_over_cap);
+        out.extend_from_slice(&f.swim_strength.to_le_bytes());
         let slot = f.anim_slot.as_bytes();
         out.push(slot.len().min(255) as u8);
         out.extend_from_slice(&slot[..slot.len().min(255)]);
@@ -133,6 +134,7 @@ pub fn unpack_frames(data: &[u8]) -> Option<Vec<TraceFrame>> {
         let peak_height = read_f32(data, &mut pos)?;
         let slide_over_cap = *data.get(pos)?;
         pos += 1;
+        let swim_strength = read_u16(data, &mut pos)?;
         let slot_len = *data.get(pos)? as usize;
         pos += 1;
         let slot = core::str::from_utf8(data.get(pos..pos + slot_len)?)
@@ -174,6 +176,7 @@ pub fn unpack_frames(data: &[u8]) -> Option<Vec<TraceFrame>> {
             quicksand_depth,
             peak_height,
             slide_over_cap,
+            swim_strength,
             anim_slot: slot,
             anim_frame,
         });
@@ -220,6 +223,7 @@ mod tests {
             quicksand_depth: 0.0,
             peak_height: 0.0,
             slide_over_cap: 0,
+            swim_strength: 160,
             anim_slot: "walk_cycle".into(),
             anim_frame: 9,
         }
