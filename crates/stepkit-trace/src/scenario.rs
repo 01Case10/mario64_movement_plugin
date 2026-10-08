@@ -120,6 +120,15 @@ pub enum Assertion {
         expected: f32,
         tol: f32,
     },
+    /// The forward speed on the first recorded frame carrying this action
+    /// lies within `expected ± tol`. Encodes decomp-verified entry
+    /// multipliers (long-jump x1.5, dive +15, wall-kick minimum, etc.).
+    /// Fails if the action never occurs.
+    ActionEntrySpeed {
+        action: String,
+        expected: f32,
+        tol: f32,
+    },
 }
 
 /// A complete scenario definition.
@@ -309,6 +318,30 @@ pub fn check_assertions(
                     failures.push(format!(
                         "assertion failed: ActionEntryVelY{{action: \"{action}\"}}: frame {} vel_y={:.1}, expected {:.1}±{:.1}",
                         first.frame, first.vel_y, expected, tol
+                    ));
+                }
+            }
+            Assertion::ActionEntrySpeed {
+                action,
+                expected,
+                tol,
+            } => {
+                let Some(id) = resolve(action) else {
+                    failures.push(format!(
+                        "assertion failed: ActionEntrySpeed{{action: \"{action}\"}}: unknown action \"{action}\""
+                    ));
+                    continue;
+                };
+                let Some(first) = frames.iter().find(|f| f.action == id.0) else {
+                    failures.push(format!(
+                        "assertion failed: ActionEntrySpeed{{action: \"{action}\"}}: action never occurred"
+                    ));
+                    continue;
+                };
+                if (first.fwd_speed - expected).abs() > *tol {
+                    failures.push(format!(
+                        "assertion failed: ActionEntrySpeed{{action: \"{action}\"}}: frame {} fwd_speed={:.1}, expected {:.1}±{:.1}",
+                        first.frame, first.fwd_speed, expected, tol
                     ));
                 }
             }
@@ -574,6 +607,35 @@ mod tests {
         let fails = check_assertions(&s, &frames, &reg);
         assert_eq!(fails.len(), 1);
         assert!(fails[0].contains("vel_y=62.0"), "{}", fails[0]);
+        // Action never occurring fails.
+        let frames = vec![tframe(ActionId::IDLE.0, 0.0, 0.0, 0)];
+        let fails = check_assertions(&s, &frames, &reg);
+        assert_eq!(fails.len(), 1);
+        assert!(fails[0].contains("never occurred"), "{}", fails[0]);
+    }
+
+    #[test]
+    fn assertions_entry_speed() {
+        use stepkit_core::actions::ActionRegistry;
+        let reg = ActionRegistry::sm64_style();
+        let s = scenario_with(vec![Assertion::ActionEntrySpeed {
+            action: "LongJump".into(),
+            expected: 48.0,
+            tol: 1.0,
+        }]);
+        let frames = vec![
+            tframe(ActionId::IDLE.0, 0.0, 0.0, 0),
+            tframe(ActionId::LONG_JUMP.0, 0.0, 48.0, 1),
+        ];
+        assert!(check_assertions(&s, &frames, &reg).is_empty());
+        // Wrong entry speed fails.
+        let frames = vec![
+            tframe(ActionId::IDLE.0, 0.0, 0.0, 1),
+            tframe(ActionId::LONG_JUMP.0, 0.0, 30.0, 1),
+        ];
+        let fails = check_assertions(&s, &frames, &reg);
+        assert_eq!(fails.len(), 1);
+        assert!(fails[0].contains("fwd_speed=30.0"), "{}", fails[0]);
         // Action never occurring fails.
         let frames = vec![tframe(ActionId::IDLE.0, 0.0, 0.0, 0)];
         let fails = check_assertions(&s, &frames, &reg);
