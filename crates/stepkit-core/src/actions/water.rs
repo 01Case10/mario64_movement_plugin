@@ -48,13 +48,21 @@ impl ActionHandler for WaterPlunge {
         "WaterPlunge"
     }
     fn tick(&self, cx: &mut ActionCx, _prev_buttons: u16) -> ActionResult {
-        cx.state.action_timer += 1;
+        // NOTE: step::tick already incremented action_timer; do not add again.
         // Drag to a stop, then swim.
         cx.state.vel.x *= 0.9;
         cx.state.vel.z *= 0.9;
         cx.state.vel.y *= 0.9;
         cx.state.pos += cx.state.vel;
-        if cx.state.action_timer >= 10 {
+        // End on floor contact, or after 20 frames (decomp: floor hit,
+        // terminal vertical velocity, or 20 frames).
+        if let Some(f) = cx.world.find_floor(cx.state.pos, 1.0) {
+            if cx.state.pos.y <= f.y + 1.0 {
+                cx.state.pos.y = f.y;
+                return cx.goto(id::SWIMMING, 0);
+            }
+        }
+        if cx.state.action_timer >= 20 {
             return cx.goto(id::SWIMMING, 0);
         }
         ActionResult::Stay

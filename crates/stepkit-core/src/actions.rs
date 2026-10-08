@@ -45,7 +45,13 @@ impl<'a> ActionCx<'a> {
 
     /// Stick magnitude in stick units.
     pub fn intended_magnitude(&self) -> f32 {
-        self.input.magnitude()
+        self.input.intended_mag()
+    }
+
+    /// Raw (unreshaped) stick magnitude; used for thresholds the reference
+    /// game applies pre-reshape (e.g. the dive stick check).
+    pub fn raw_magnitude(&self) -> f32 {
+        self.input.raw_magnitude()
     }
 
     /// True on the frame a button transitions from released to pressed.
@@ -65,6 +71,13 @@ impl<'a> ActionCx<'a> {
         self.state.action_arg = arg;
         self.events.push(Event::ActionChanged { old, new });
         ActionResult::Goto(new, arg)
+    }
+
+    /// The argument passed to the current action by the last [`ActionCx::goto`].
+    /// Actions that need their entry parameter (landing fall speed, knockback
+    /// variant, ...) read it here instead of stashing copies.
+    pub fn arg(&self) -> u32 {
+        self.state.action_arg
     }
 
     /// Horizontal forward unit vector from the facing yaw.
@@ -103,9 +116,21 @@ impl ActionRegistry {
         r.register_builtin(ActionId::IDLE, ground::Idle);
         r.register_builtin(ActionId::WALKING, ground::Walking);
         r.register_builtin(ActionId::TURNING_AROUND, ground::TurningAround);
+        r.register_builtin(ActionId::FINISH_TURNING_AROUND, ground::FinishTurningAround);
         r.register_builtin(ActionId::BRAKING, ground::Braking);
         r.register_builtin(ActionId::DECELERATING, ground::Decelerating);
-        r.register_builtin(ActionId::LANDING, ground::Landing);
+        r.register_builtin(ActionId::JUMP_LAND, ground::JumpLand);
+        r.register_builtin(ActionId::DOUBLE_JUMP_LAND, ground::DoubleJumpLand);
+        r.register_builtin(ActionId::TRIPLE_JUMP_LAND, ground::TripleJumpLand);
+        r.register_builtin(ActionId::BACKFLIP_LAND, ground::BackflipLand);
+        r.register_builtin(ActionId::SIDE_FLIP_LAND, ground::SideFlipLand);
+        r.register_builtin(ActionId::FREEFALL_LAND, ground::FreefallLand);
+        r.register_builtin(ActionId::LONG_JUMP_LAND, ground::LongJumpLand);
+        r.register_builtin(ActionId::BUTT_SLIDE, ground::ButtSlide);
+        r.register_builtin(ActionId::STOMACH_SLIDE, ground::StomachSlide);
+        r.register_builtin(ActionId::DIVE_SLIDE, ground::DiveSlide);
+        r.register_builtin(ActionId::CROUCH_SLIDE, ground::CrouchSlide);
+        r.register_builtin(ActionId::SLIDE_KICK_SLIDE, ground::SlideKickSlide);
         r.register_builtin(ActionId::JUMP, air::SingleJump);
         r.register_builtin(ActionId::DOUBLE_JUMP, air::DoubleJump);
         r.register_builtin(ActionId::TRIPLE_JUMP, air::TripleJump);
@@ -113,6 +138,9 @@ impl ActionRegistry {
         r.register_builtin(ActionId::SIDE_FLIP, air::SideFlip);
         r.register_builtin(ActionId::LONG_JUMP, air::LongJump);
         r.register_builtin(ActionId::DIVE, air::Dive);
+        r.register_builtin(ActionId::SLIDE_KICK, air::SlideKick);
+        r.register_builtin(ActionId::FORWARD_ROLLOUT, air::ForwardRollout);
+        r.register_builtin(ActionId::BACKWARD_ROLLOUT, air::BackwardRollout);
         r.register_builtin(ActionId::GROUND_POUND, air::GroundPound);
         r.register_builtin(ActionId::WALL_KICK, air::WallKick);
         r.register_builtin(ActionId::LEDGE_GRAB, air::LedgeGrab);
@@ -165,10 +193,16 @@ mod tests {
             ActionId::IDLE,
             ActionId::WALKING,
             ActionId::TURNING_AROUND,
+            ActionId::FINISH_TURNING_AROUND,
             ActionId::BRAKING,
             ActionId::DECELERATING,
-            ActionId::LANDING,
+            ActionId::JUMP_LAND,
+            ActionId::FREEFALL_LAND,
+            ActionId::DIVE_SLIDE,
+            ActionId::CROUCH_SLIDE,
+            ActionId::STOMACH_SLIDE,
             ActionId::JUMP,
+            ActionId::SLIDE_KICK,
             ActionId::FREEFALL,
         ] {
             assert!(r.get(id).is_some(), "{id:?}");

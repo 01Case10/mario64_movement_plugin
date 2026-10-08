@@ -30,6 +30,8 @@ pub mod slot {
     pub const WALL_KICK: u32 = 17;
     pub const LEDGE_GRAB: u32 = 18;
     pub const AIR_KNOCKBACK: u32 = 20;
+    pub const SLIDE_KICK: u32 = 28;
+    pub const ROLLOUT: u32 = 29;
 }
 
 /// Per-action air behavior switches.
@@ -90,7 +92,7 @@ fn air_common(cx: &mut ActionCx, prev_buttons: u16, cfg: &AirConfig) -> Option<A
     // Sideways drag (weaker).
     side *= 0.95;
     if let Some(iy) = cx.intended_yaw() {
-        let mag = cx.intended_magnitude() as f32 / 32.0;
+        let mag = cx.intended_magnitude() / 32.0;
         if mag > 0.01 {
             let dyaw = iy.diff_to(cx.state.face_yaw);
             let dyaw_rad = dyaw as f32 / 65536.0 * std::f32::consts::TAU;
@@ -98,7 +100,9 @@ fn air_common(cx: &mut ActionCx, prev_buttons: u16, cfg: &AirConfig) -> Option<A
             fwd += mag * dyaw_rad.cos() * 1.5;
             side += mag * dyaw_rad.sin() * 10.0;
             // Turn facing independently (does not rotate velocity).
-            let turn = Angle((512.0 * dyaw_rad.sin() * mag) as i16);
+            // Multiplier comes from the action config: 512 for the
+            // with-turn model, 0 to disable (knockbacks, dives).
+            let turn = Angle((p.steer_rate as f32 * dyaw_rad.sin() * mag) as i16);
             cx.state.face_yaw = cx.state.face_yaw.wrapping_add(turn);
         }
     }
@@ -128,10 +132,9 @@ fn air_common(cx: &mut ActionCx, prev_buttons: u16, cfg: &AirConfig) -> Option<A
             normal_yaw: crate::trig::atan2(out.wall_normal.x, out.wall_normal.z),
         });
         cx.state.wall_kick_timer = 10; // spec: wall.kick_window (verify)
-        // Speed-dependent wall response.
-        // (Behavioral: soft stop, normal bonk, high-speed knockback.)
-        let speed = (cx.state.vel.x * cx.state.vel.x
-            + cx.state.vel.z * cx.state.vel.z).sqrt();
+                                       // Speed-dependent wall response.
+                                       // (Behavioral: soft stop, normal bonk, high-speed knockback.)
+        let speed = (cx.state.vel.x * cx.state.vel.x + cx.state.vel.z * cx.state.vel.z).sqrt();
         let n = out.wall_normal;
         // Remove into-wall velocity component (reflect).
         let dot = cx.state.vel.x * n.x + cx.state.vel.z * n.z;
@@ -140,7 +143,16 @@ fn air_common(cx: &mut ActionCx, prev_buttons: u16, cfg: &AirConfig) -> Option<A
             cx.state.vel.x -= 2.0 * dot * n.x;
             cx.state.vel.z -= 2.0 * dot * n.z;
         }
-        if speed >= 38.0 {
+        // Slide kick and rollouts stop dead on walls (full bonk routing
+        // for these is Phase C).
+        if cx.state.action == ActionId::SLIDE_KICK
+            || cx.state.action == ActionId::FORWARD_ROLLOUT
+            || cx.state.action == ActionId::BACKWARD_ROLLOUT
+        {
+            cx.state.vel.x = 0.0;
+            cx.state.vel.z = 0.0;
+            cx.state.forward_speed = 0.0;
+        } else if speed >= 38.0 {
             // High-speed impact -> backwards air knockback.
             return Some(enter_air_knockback(cx, out.wall_normal));
         } else if speed > 16.0 {
@@ -174,12 +186,27 @@ fn air_common(cx: &mut ActionCx, prev_buttons: u16, cfg: &AirConfig) -> Option<A
         cx.state.wall_kick_timer = cx.state.wall_kick_timer.saturating_sub(1);
     }
     if let Some(f) = out.floor {
-        let fall_speed = out.fall_speed;
-        cx.events.push(Event::Landed { fall_speed });
-        cx.state.floor_kind = super::ground::surface_kind_index(f.kind);
-        cx.state.land_from = cx.state.action;
-        cx.timeline.slot = super::ground::slot::LAND;
-        return Some(cx.goto(ActionId::LANDING, fall_speed.max(0.0) as u32));
+        // Slide kick: the first touchdown bounces at half the impact speed
+        // (tracked via action_state); the second becomes a ground slide.
+        // The snap window can register a touchdown at the apex (impact
+        // speed ~ 0), so the bounce has a working minimum to guarantee
+        // the character actually leaves the ground (verify).
+        if cx.state.action == ActionId::SLIDE_KICK && cx.state.action_state == 0 {
+            cx.state.action_state = 1;
+            cx.state.pos = out.pos;
+            cx.state.floor_y = Some(f.y);
+            cx.state.vel.y = (out.fall_speed * 0.5).max(8.0);
+            cx.events.push(Event::Landed {
+                fall_speed: out.fall_speed,
+            });
+        } else {
+            let fall_speed = out.fall_speed;
+            cx.events.push(Event::Landed { fall_speed });
+            cx.state.floor_kind = super::ground::surface_kind_index(f.kind);
+            cx.state.land_from = cx.state.action;
+            cx.timeline.slot = super::ground::slot::LAND;
+            return Some(enter_landing_for(cx, fall_speed));
+        }
     }
     // Gravity applies after movement and collision.
     // Jump-height control: A released while rising fast quarters vy.
@@ -193,12 +220,30 @@ fn air_common(cx: &mut ActionCx, prev_buttons: u16, cfg: &AirConfig) -> Option<A
     None
 }
 
+/// Route a touchdown to the per-action landing (or slide) matching
+/// `land_from`. The impact speed travels as the goto arg so the landing
+/// can record it for fall damage (Phase D).
+fn enter_landing_for(cx: &mut ActionCx, fall_speed: f32) -> ActionResult {
+    let arg = fall_speed.max(0.0) as u32;
+    match cx.state.land_from {
+        ActionId::JUMP => cx.goto(ActionId::JUMP_LAND, arg),
+        ActionId::DOUBLE_JUMP => cx.goto(ActionId::DOUBLE_JUMP_LAND, arg),
+        ActionId::TRIPLE_JUMP => cx.goto(ActionId::TRIPLE_JUMP_LAND, arg),
+        ActionId::BACKFLIP => cx.goto(ActionId::BACKFLIP_LAND, arg),
+        ActionId::SIDE_FLIP => cx.goto(ActionId::SIDE_FLIP_LAND, arg),
+        ActionId::LONG_JUMP => cx.goto(ActionId::LONG_JUMP_LAND, arg),
+        ActionId::DIVE => super::ground::enter_dive_slide(cx),
+        ActionId::SLIDE_KICK => super::ground::enter_slide_kick_slide(cx),
+        _ => cx.goto(ActionId::FREEFALL_LAND, arg),
+    }
+}
+
 fn base_air_config() -> AirConfig {
     AirConfig {
         height_control: true,
         gravity: 4.0,
         terminal: -75.0,
-        steer_rate: 0x800, // spec: air.steer_rate (verify)
+        steer_rate: 512, // with-turn yaw multiplier (decomp: 512*sin(dyaw)*mag)
         air_drag_threshold: 32.0,
         allow_dive: true,
         allow_pound: true,
@@ -398,6 +443,69 @@ air_action!(
     slot::DIVE
 );
 
+/// Slide kick entry: vy = 12, forward speed raised to at least 32.
+pub fn enter_slide_kick(cx: &mut ActionCx) -> ActionResult {
+    cx.state.forward_speed = cx.state.forward_speed.max(32.0);
+    set_air_velocity(cx, 12.0);
+    cx.timeline.slot = slot::SLIDE_KICK;
+    cx.events.push(Event::Jumped { velocity_y: 12.0 });
+    cx.goto(ActionId::SLIDE_KICK, 0)
+}
+
+/// Forward rollout entry: vy = 30, horizontal speed kept.
+pub fn enter_forward_rollout(cx: &mut ActionCx) -> ActionResult {
+    set_air_velocity(cx, 30.0);
+    cx.timeline.slot = slot::ROLLOUT;
+    cx.goto(ActionId::FORWARD_ROLLOUT, 0)
+}
+
+/// Backward rollout entry: vy = 30, horizontal speed kept.
+pub fn enter_backward_rollout(cx: &mut ActionCx) -> ActionResult {
+    set_air_velocity(cx, 30.0);
+    cx.timeline.slot = slot::ROLLOUT;
+    cx.goto(ActionId::BACKWARD_ROLLOUT, 0)
+}
+
+/// Slide kick, airborne: after 30 frames and more than 500 above the
+/// floor it becomes a freefall; the first touchdown bounces at half
+/// impact speed (see air_common), the second becomes a ground slide.
+pub struct SlideKick;
+impl ActionHandler for SlideKick {
+    fn name(&self) -> &'static str {
+        "SlideKick"
+    }
+    fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
+        if cx.state.action_timer >= 30 {
+            let high = cx
+                .world
+                .find_floor(cx.state.pos, 4096.0)
+                .is_none_or(|f| cx.state.pos.y - f.y > 500.0);
+            if high {
+                cx.timeline.slot = slot::FREEFALL;
+                return cx.goto(ActionId::FREEFALL, 0);
+            }
+        }
+        if let Some(r) = air_common(cx, prev_buttons, &base_air_config()) {
+            return r;
+        }
+        cx.timeline.slot = slot::SLIDE_KICK;
+        ActionResult::Stay
+    }
+}
+
+air_action!(
+    ForwardRollout,
+    "ForwardRollout",
+    base_air_config(),
+    slot::ROLLOUT
+);
+air_action!(
+    BackwardRollout,
+    "BackwardRollout",
+    base_air_config(),
+    slot::ROLLOUT
+);
+
 /// Freefall: walked off a ledge. Dive and pound allowed (verify for pound).
 pub struct Freefall;
 impl ActionHandler for Freefall {
@@ -442,7 +550,7 @@ impl ActionHandler for GroundPound {
             cx.events.push(Event::Landed { fall_speed });
             cx.state.land_from = ActionId::GROUND_POUND;
             cx.timeline.slot = super::ground::slot::LAND;
-            return cx.goto(ActionId::LANDING, fall_speed.max(0.0) as u32);
+            return cx.goto(ActionId::FREEFALL_LAND, fall_speed.max(0.0) as u32);
         }
         cx.timeline.slot = slot::GROUND_POUND;
         ActionResult::Stay
@@ -507,6 +615,7 @@ fn try_ledge_grab(cx: &mut ActionCx, wall_normal: glam::Vec3) -> Option<ActionRe
     cx.state.face_yaw = crate::trig::atan2(into_wall.x, into_wall.z);
     cx.state.floor_y = Some(floor.y);
     cx.timeline.slot = slot::LEDGE_GRAB;
+    cx.events.push(crate::events::Event::LedgeGrab);
     Some(cx.goto(ActionId::LEDGE_GRAB, 0))
 }
 
