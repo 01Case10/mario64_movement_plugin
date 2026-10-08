@@ -110,6 +110,12 @@ impl StepChar3D {
         self.state.forward_speed
     }
 
+    /// Current health (full = 0x880 / 2176; dead below 0x100).
+    #[func]
+    pub fn get_health(&self) -> i64 {
+        self.state.health as i64
+    }
+
     /// Current animation slot (drives the anim manifest in phase 6).
     #[func]
     pub fn get_anim_slot(&self) -> i64 {
@@ -296,6 +302,10 @@ impl StepChar3D {
                 }
                 Event::LedgeGrab => {
                     self.base_mut().emit_signal("ledge_grabbed", &[]);
+                }
+                Event::Damaged { amount } => {
+                    self.base_mut()
+                        .emit_signal("damaged", &[amount.to_variant()]);
                 }
             }
         }

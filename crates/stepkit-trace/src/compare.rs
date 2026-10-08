@@ -207,6 +207,11 @@ mod tests {
             wall_hit: 0,
             wall_kick_timer: 0,
             wall_normal_yaw: 0,
+            health: 0x880,
+            squish_timer: 0,
+            quicksand_depth: 0.0,
+            peak_height: 0.0,
+            slide_over_cap: 0,
             anim_slot: "idle".into(),
             anim_frame: 0,
         }

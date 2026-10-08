@@ -11,12 +11,108 @@ pub enum SurfaceKind {
     Default,
     /// Steep enough to slide on.
     Slide,
-    /// Kills horizontal speed (quicksand-like). v1: no slope assist
-    /// (maps to the not-slippery accel); the full quicksand sink/depth
-    /// system lands in plan Phase D.
+    /// Quicksand: sinks the character (see `quicksand_depth`); no slope
+    /// assist (maps to the not-slippery class).
     Quicksand,
     /// Game-defined kinds start here; the meaning is the game's own.
     Custom(u8),
+}
+
+/// Slipperiness class of a surface, driving slide behavior. The four
+/// classes and their numbers follow the decomp-documented surface matrix
+/// (behavioral reference only).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum SurfaceClass {
+    /// Ice-like: slides on ~10-degree slopes and up.
+    VerySlippery,
+    /// Slippery: slides on ~20-degree slopes and up.
+    Slippery,
+    /// Normal ground.
+    #[default]
+    Default,
+    /// Never slippery (grippy).
+    NotSlippery,
+}
+
+impl SurfaceClass {
+    /// Slipperiness class for a surface kind. Slide-terrain maps to
+    /// Slippery (steep slide ramps still trigger via the slide-terrain
+    /// rule); Quicksand maps to NotSlippery (no slope assist, never
+    /// slide-triggers; the sink logic keys off the kind directly).
+    pub fn of(kind: SurfaceKind) -> Self {
+        match kind {
+            SurfaceKind::Default => SurfaceClass::Default,
+            SurfaceKind::Slide => SurfaceClass::Slippery,
+            SurfaceKind::Quicksand => SurfaceClass::NotSlippery,
+            SurfaceKind::Custom(_) => SurfaceClass::Default,
+        }
+    }
+
+    /// Slipperiness class for a `floor_kind` index (see
+    /// `surface_kind_index`): 0 = Default, 1 = Slide, 2 = Quicksand,
+    /// 3+ = Custom.
+    pub fn of_kind_index(index: u8) -> Self {
+        match index {
+            0 => SurfaceClass::Default,
+            1 => SurfaceClass::Slippery,
+            2 => SurfaceClass::NotSlippery,
+            _ => SurfaceClass::Default,
+        }
+    }
+
+    /// A floor counts as slippery for slide purposes when its normal.y is
+    /// at or below this. spec: surface.class_slippery_y
+    pub fn slippery_floor_y(self) -> f32 {
+        match self {
+            SurfaceClass::VerySlippery => 0.9848077,
+            SurfaceClass::Slippery => 0.9396926,
+            SurfaceClass::Default => 0.7880108,
+            // NotSlippery: never slippery (threshold below any valid normal).
+            SurfaceClass::NotSlippery => -1.0,
+        }
+    }
+
+    /// Normal.y at or below which the floor counts as a slope (for
+    /// slope-speed purposes). spec: surface.class_slope_y
+    pub fn slope_y(self) -> f32 {
+        match self {
+            SurfaceClass::VerySlippery => 0.9961947,
+            SurfaceClass::Slippery => 0.9848077,
+            SurfaceClass::Default => 0.9659258,
+            SurfaceClass::NotSlippery => 0.9396926,
+        }
+    }
+
+    /// Normal.y at or below which the floor counts as steep (slide
+    /// activation band). spec: surface.class_steep_y
+    pub fn steep_y(self) -> f32 {
+        match self {
+            SurfaceClass::VerySlippery => 0.9659258,
+            SurfaceClass::Slippery => 0.9396926,
+            SurfaceClass::Default | SurfaceClass::NotSlippery => 0.8660254,
+        }
+    }
+
+    /// Downhill acceleration applied to slides, per frame.
+    /// spec: surface.class_slide_accel
+    pub fn slide_accel(self) -> f32 {
+        match self {
+            SurfaceClass::VerySlippery => 10.0,
+            SurfaceClass::Slippery => 8.0,
+            SurfaceClass::Default => 7.0,
+            SurfaceClass::NotSlippery => 5.0,
+        }
+    }
+
+    /// Base per-frame velocity retention for slides (stick input modulates
+    /// this in `update_slide_vector`). spec: surface.class_slide_loss
+    pub fn slide_loss(self) -> f32 {
+        match self {
+            SurfaceClass::VerySlippery => 0.98,
+            SurfaceClass::Slippery => 0.96,
+            SurfaceClass::Default | SurfaceClass::NotSlippery => 0.92,
+        }
+    }
 }
 
 /// Result of a floor query: the highest surface at or below a position.

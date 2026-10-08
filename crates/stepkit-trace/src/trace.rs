@@ -36,6 +36,11 @@ pub struct TraceFrame {
     pub wall_hit: u8,
     pub wall_kick_timer: u32,
     pub wall_normal_yaw: i16,
+    pub health: i32,
+    pub squish_timer: u32,
+    pub quicksand_depth: f32,
+    pub peak_height: f32,
+    pub slide_over_cap: u8,
     pub anim_slot: String,
     pub anim_frame: u32,
 }
@@ -108,6 +113,11 @@ mod tests {
             wall_hit: 0,
             wall_kick_timer: 0,
             wall_normal_yaw: 0,
+            health: 0x880,
+            squish_timer: 0,
+            quicksand_depth: 0.0,
+            peak_height: 0.0,
+            slide_over_cap: 0,
             anim_slot: "idle".into(),
             anim_frame: 0,
         }

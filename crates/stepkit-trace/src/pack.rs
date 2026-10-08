@@ -6,7 +6,7 @@
 
 use crate::trace::TraceFrame;
 
-const MAGIC: &[u8; 8] = b"STPKTRC\x04"; // v4: added slide_vel_x, slide_vel_z
+const MAGIC: &[u8; 8] = b"STPKTRC\x05"; // v5: added health, squish_timer, quicksand_depth, peak_height, slide_over_cap
 
 /// Pack frames into the binary format.
 pub fn pack_frames(frames: &[TraceFrame]) -> Vec<u8> {
@@ -50,6 +50,11 @@ pub fn pack_frames(frames: &[TraceFrame]) -> Vec<u8> {
         out.push(f.wall_hit);
         out.extend_from_slice(&f.wall_kick_timer.to_le_bytes());
         out.extend_from_slice(&f.wall_normal_yaw.to_le_bytes());
+        out.extend_from_slice(&f.health.to_le_bytes());
+        out.extend_from_slice(&f.squish_timer.to_le_bytes());
+        out.extend_from_slice(&f.quicksand_depth.to_le_bytes());
+        out.extend_from_slice(&f.peak_height.to_le_bytes());
+        out.push(f.slide_over_cap);
         let slot = f.anim_slot.as_bytes();
         out.push(slot.len().min(255) as u8);
         out.extend_from_slice(&slot[..slot.len().min(255)]);
@@ -72,6 +77,10 @@ fn read_u16(data: &[u8], pos: &mut usize) -> Option<u16> {
 
 fn read_i16(data: &[u8], pos: &mut usize) -> Option<i16> {
     read_u16(data, pos).map(|v| v as i16)
+}
+
+fn read_i32(data: &[u8], pos: &mut usize) -> Option<i32> {
+    read_u32(data, pos).map(|v| v as i32)
 }
 
 fn read_f32(data: &[u8], pos: &mut usize) -> Option<f32> {
@@ -118,6 +127,12 @@ pub fn unpack_frames(data: &[u8]) -> Option<Vec<TraceFrame>> {
         pos += 1;
         let wall_kick_timer = read_u32(data, &mut pos)?;
         let wall_normal_yaw = read_i16(data, &mut pos)?;
+        let health = read_i32(data, &mut pos)?;
+        let squish_timer = read_u32(data, &mut pos)?;
+        let quicksand_depth = read_f32(data, &mut pos)?;
+        let peak_height = read_f32(data, &mut pos)?;
+        let slide_over_cap = *data.get(pos)?;
+        pos += 1;
         let slot_len = *data.get(pos)? as usize;
         pos += 1;
         let slot = core::str::from_utf8(data.get(pos..pos + slot_len)?)
@@ -154,6 +169,11 @@ pub fn unpack_frames(data: &[u8]) -> Option<Vec<TraceFrame>> {
             wall_hit,
             wall_kick_timer,
             wall_normal_yaw,
+            health,
+            squish_timer,
+            quicksand_depth,
+            peak_height,
+            slide_over_cap,
             anim_slot: slot,
             anim_frame,
         });
@@ -195,6 +215,11 @@ mod tests {
             wall_hit: 0,
             wall_kick_timer: 0,
             wall_normal_yaw: 0,
+            health: 0x880,
+            squish_timer: 0,
+            quicksand_depth: 0.0,
+            peak_height: 0.0,
+            slide_over_cap: 0,
             anim_slot: "walk_cycle".into(),
             anim_frame: 9,
         }

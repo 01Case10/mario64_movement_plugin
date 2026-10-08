@@ -11,8 +11,11 @@ use glam::Vec3;
 use std::collections::BTreeMap;
 
 /// Floor classification threshold on the triangle normal's y.
-/// spec: collision.classify_floor_threshold (verify)
-pub const FLOOR_NORMAL_Y: f32 = 0.5;
+/// Floors with normal.y in [0.2924, 0.5) are steep but standable (the
+/// reference treats normal.y < 0.2924, ~73 deg, as too steep to stand);
+/// below 0.2924 a triangle is a wall.
+/// spec: collision.classify_floor_threshold (verified: decomp steep cutoff)
+pub const FLOOR_NORMAL_Y: f32 = 0.2924;
 /// Ceiling classification threshold on the triangle normal's y.
 /// spec: collision.classify_ceiling_threshold (verify)
 pub const CEILING_NORMAL_Y: f32 = -0.5;
