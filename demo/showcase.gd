@@ -180,9 +180,9 @@ var SEGMENTS := [
 	[985, "Butt Slide (slippery ramp)", Vector3(-9, 0.5, -2), 90, 25, 9.0, true],
 	[1045, "Crouch & Crawl", Vector3(0, 0.1, 0), 0, 28, 9.0, true],
 	[1105, "Quicksand (sinks; weak jump)", Vector3(8, 0.1, -8), 0, 28, 9.0, true],
-	[1165, "Water: Plunge - Tread", Vector3(-8.5, -1.5, -10), 0, 35, 7.0, true],
-	[1285, "Breaststroke Chain (tap A)", Vector3.ZERO, 0, 35, 7.0, false],
-	[1395, "Flutter Kick (hold A) - Water Jump", Vector3(-8.5, -1.0, -10), 0, 35, 7.0, true],
+	[1165, "Water: Plunge - Tread", Vector3(-8.5, -1.5, -10), 0, 35, 7.0, true, 0.0],
+	[1285, "Breaststroke Chain (tap A)", Vector3.ZERO, 0, 35, 7.0, false, -1.0],
+	[1395, "Flutter Kick (hold A) - Water Jump", Vector3(-8.5, -1.0, -10), 0, 35, 7.0, true, -1.0],
 	[1545, "Done", Vector3(0, 0.1, 0), 0, 28, 9.0, true],
 ]
 const QUIT_TICK := 1570
@@ -258,6 +258,19 @@ func _enter_segment(i: int) -> void:
 		player.teleport(s[2])
 		player.set_stick(0, 0)
 		player.set_buttons(0)
+		# Face Mario away from the camera so camera-relative "forward" stick
+		# moves him straight, not in a diagonal turn arc. rig_yaw is where the
+		# camera sits; Mario faces the opposite direction (the viewing dir).
+		# Segments may provide an 8th element: an explicit face_yaw override
+		# (degrees). Water segments use -1 to keep the previous facing, which
+		# keeps the swim choreography inside the pool.
+		var rig_yaw = float(s[3])
+		var face_yaw = fmod(rig_yaw + 180.0, 360.0)
+		if s.size() > 7 and float(s[7]) >= 0.0:
+			face_yaw = float(s[7])
+		if not (s.size() > 7 and float(s[7]) < 0.0):
+			player.set_face_yaw_deg(face_yaw)
+		player.set_camera_yaw_deg(rig_yaw)
 		rig.global_position = player.global_position + Vector3(0, 1.5, 0)
 	rig.rotation.y = deg_to_rad(float(s[3]))
 	spring.rotation.x = -deg_to_rad(float(s[4]))
