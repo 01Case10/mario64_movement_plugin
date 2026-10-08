@@ -180,9 +180,9 @@ var SEGMENTS := [
 	[985, "Butt Slide (slippery ramp)", Vector3(-9, 0.5, -2), 90, 25, 9.0, true],
 	[1045, "Crouch & Crawl", Vector3(0, 0.1, 0), 0, 28, 9.0, true],
 	[1105, "Quicksand (sinks; weak jump)", Vector3(8, 0.1, -8), 0, 28, 9.0, true],
-	[1165, "Water: Plunge - Tread", Vector3(-12, -1.5, -10), 0, 35, 7.0, true],
+	[1165, "Water: Plunge - Tread", Vector3(-8.5, -1.5, -10), 0, 35, 7.0, true],
 	[1285, "Breaststroke Chain (tap A)", Vector3.ZERO, 0, 35, 7.0, false],
-	[1395, "Flutter Kick (hold A) - Water Jump", Vector3(-12, -1.0, -10), 0, 35, 7.0, true],
+	[1395, "Flutter Kick (hold A) - Water Jump", Vector3(-8.5, -1.0, -10), 0, 35, 7.0, true],
 	[1545, "Done", Vector3(0, 0.1, 0), 0, 28, 9.0, true],
 ]
 const QUIT_TICK := 1570
@@ -386,8 +386,9 @@ func _choreography() -> void:
 		17:  # Water: fall in from height -> plunge -> tread. (no input needed)
 			pass
 		18:  # Breaststroke: tap A for stroke chains. Weave to stay in the pool,
-			# stay deep so A taps don't trigger water jumps.
-			in_sx = 0.6 * sin(seg_tick * 0.15)
+			# stay deep so A taps don't trigger water jumps. (0.3 weave keeps
+			# the visual body off the pool walls; the sim has no water walls.)
+			in_sx = 0.3 * sin(seg_tick * 0.15)
 			in_sy = 0.0
 			if seg_tick % 30 == 5 and player.global_position.y < -0.3:
 				_press(BTN_A, 2)

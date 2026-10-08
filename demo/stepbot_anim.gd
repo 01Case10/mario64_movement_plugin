@@ -54,19 +54,19 @@ func _animate(_delta: float) -> void:
 			head_pivot.position.y = 1.25
 			leg_l.rotation.x = 0.5
 			leg_r.rotation.x = 0.5
-		0x03000880, 0x03000881, 0x01000882, 0x03000885:  # Jump / double / triple / steep: tuck.
-			leg_l.rotation.x = 0.6
-			leg_r.rotation.x = 0.6
+		0x03000880, 0x03000881, 0x01000882, 0x03000885:  # Jump / double / triple / steep: tuck (negative = knees forward).
+			leg_l.rotation.x = -0.6
+			leg_r.rotation.x = -0.6
 			arm_l.rotation.x = -2.5
 			arm_r.rotation.x = -2.5
 		0x01000883:  # Backflip: tuck hard, arms out.
-			leg_l.rotation.x = 0.9
-			leg_r.rotation.x = 0.9
+			leg_l.rotation.x = -0.9
+			leg_r.rotation.x = -0.9
 			arm_l.rotation.z = 1.5
 			arm_r.rotation.z = -1.5
 		0x01000887:  # Side flip: lean.
-			leg_l.rotation.x = 0.4
-			leg_r.rotation.x = 0.4
+			leg_l.rotation.x = -0.4
+			leg_r.rotation.x = -0.4
 			rotation.z = 0.3
 		0x03000888, 0x0188088A, 0x00880456:  # Long jump / dive / dive slide: superman.
 			arm_l.rotation.x = -2.8
@@ -83,31 +83,42 @@ func _animate(_delta: float) -> void:
 			leg_l.rotation.x = 0.7
 			leg_r.rotation.x = 0.7
 		0x400008A8:  # Ground pound: tuck hard, arms swept down.
-			leg_l.rotation.x = 0.9
-			leg_r.rotation.x = 0.9
+			leg_l.rotation.x = -0.9
+			leg_r.rotation.x = -0.9
 			arm_l.rotation.x = 0.8
 			arm_r.rotation.x = 0.8
 		0x010008A6, 0x010008AD:  # Forward / backward rollout: tuck.
-			leg_l.rotation.x = 0.9
-			leg_r.rotation.x = 0.9
+			leg_l.rotation.x = -0.9
+			leg_r.rotation.x = -0.9
 			arm_l.rotation.x = -1.0
 			arm_r.rotation.x = -1.0
 		0x010208B6, 0x010208B0, 0x010208B1, 0x010208B2, 0x010208B3, \
 		0x00020462, 0x00020463, 0x00020460, 0x00020461, \
 		0x00020464, 0x00020465, 0x00020466, 0x000008A7:
 			# Knockbacks (air + ground), ground bonk, soft bonk, air hit wall: sprawl.
+			# Lean is -0.25 (not -0.4): the full -0.4 swings the torso's AABB
+			# into the wall on impact frames (the sim holds 0.5 m, the visual
+			# body leans forward past it).
 			arm_l.rotation.z = 1.2
 			arm_r.rotation.z = -1.2
-			rotation.x = -0.4
-		0x0800034B, 0x0000054F, 0x0000054C, 0x0000054D:
-			# Ledge grab + fast/slow climbs: arms up.
-			arm_l.rotation.x = -2.8
-			arm_r.rotation.x = -2.8
-		0x00840452:  # Butt slide: sit, legs forward.
+			rotation.x = -0.25
+		0x0800034B:
+			# Ledge grab: arms up-forward to the edge. The hang is 30 units
+			# outside the wall face, so -2.62 (30 deg from vertical) puts the
+			# hands exactly at the edge (0.30 m forward reach).
+			arm_l.rotation.x = -2.62
+			arm_r.rotation.x = -2.62
+		0x0000054F, 0x0000054C, 0x0000054D:
+			# Ledge climbs (fast/slow): arms straight up. The body rises at
+			# ~0.1 m inside the wall; forward-reaching arms would stab into
+			# the top of the ledge block, so they go straight overhead.
+			arm_l.rotation.x = -3.1
+			arm_r.rotation.x = -3.1
+		0x00840452:  # Butt slide: sit, legs forward (negative = forward/downhill).
 			body.position.y = 0.6
 			head_pivot.position.y = 1.15
-			leg_l.rotation.x = 1.2
-			leg_r.rotation.x = 1.2
+			leg_l.rotation.x = -1.2
+			leg_r.rotation.x = -1.2
 		0x008C0453:  # Stomach slide: prone.
 			arm_l.rotation.x = -2.8
 			arm_r.rotation.x = -2.8
@@ -115,11 +126,11 @@ func _animate(_delta: float) -> void:
 			leg_r.rotation.x = 0.3
 			body.position.y = 0.6
 			rotation.x = 0.6
-		0x04808459:  # Crouch slide: low slide, legs forward.
+		0x04808459:  # Crouch slide: low slide, legs forward (negative = forward).
 			body.position.y = 0.6
 			head_pivot.position.y = 1.15
-			leg_l.rotation.x = 1.0
-			leg_r.rotation.x = 1.0
+			leg_l.rotation.x = -1.0
+			leg_r.rotation.x = -1.0
 			rotation.x = 0.2
 		0x00800380, 0x00800457:  # Punching / move punching: arm jab.
 			arm_r.rotation.x = -1.6

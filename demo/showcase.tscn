@@ -1,8 +1,9 @@
-[gd_scene load_steps=25 format=3 uid="uid://stepkitshowcase"]
+[gd_scene load_steps=27 format=3 uid="uid://stepkitshowcase"]
 
 [ext_resource type="Script" path="res://showcase.gd" id="1"]
 [ext_resource type="Mesh" path="res://player_mesh.tres" id="2"]
 [ext_resource type="PackedScene" path="res://stepbot.tscn" id="3"]
+[ext_resource type="Script" path="res://clip_check.gd" id="4"]
 
 [sub_resource type="Environment" id="env"]
 background_mode = 1
@@ -58,6 +59,9 @@ size = Vector3(6, 6, 1)
 
 [sub_resource type="BoxShape3D" id="col_ledge"]
 size = Vector3(6, 0.5, 3)
+
+[sub_resource type="BoxShape3D" id="col_ramp"]
+size = Vector3(4.3, 0.04, 3)
 
 [sub_resource type="StandardMaterial3D" id="ground_mat"]
 albedo_color = Color(0.25, 0.45, 0.3, 1)
@@ -182,6 +186,19 @@ shape = SubResource("col_wall")
 [node name="LedgeShape" type="CollisionShape3D" parent="LedgeCollider"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 2.5, 10)
 shape = SubResource("col_ledge")
+
+# Ramp check-collider: thin box whose TOP face coincides with the sim ramp
+# surface (bake_ramp origin (-10,0,-2), +x, length 4.0, height 1.5). The sim
+# has no Godot collider for the ramp, so without this the clip check would be
+# blind to ramp penetration. Same tilt as the visual ramp mesh.
+[node name="RampCollider" type="StaticBody3D" parent="."]
+
+[node name="RampShape" type="CollisionShape3D" parent="RampCollider"]
+transform = Transform3D(0.9364, 0.3509, 0, -0.3509, 0.9364, 0, 0, 0, 1, -7.993, 0.7313, -2)
+shape = SubResource("col_ramp")
+
+[node name="ClipCheck" type="Node3D" parent="."]
+script = ExtResource("4")
 
 [node name="HUD" type="CanvasLayer" parent="."]
 
