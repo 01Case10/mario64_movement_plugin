@@ -1416,8 +1416,8 @@ fn anchor_quicksand_jump_land() {
 #[test]
 fn anchor_in_quicksand() {
     // Depth > 30 (direct setup; v1's shallow cap keeps this out of normal
-    // play): IN_QUICKSAND. A/B jump (vy halved), Z crouches, depth < 30
-    // exits to idle.
+    // play): IN_QUICKSAND. A jumps (vy halved), B punches, Z crouches,
+    // depth < 30 exits to idle.
     let world = quicksand_world();
     let params = MovementParams::default();
     let registry = ActionRegistry::sm64_style();
@@ -1432,22 +1432,41 @@ fn anchor_in_quicksand() {
         &world,
     );
     assert_eq!(s.action, ActionId::IN_QUICKSAND);
-    for (button, label) in [(buttons::A, "A"), (buttons::B, "B")] {
-        let press = RawInput {
-            stick_x: 0,
-            stick_y: 0,
-            buttons: button,
-            cam_yaw: Angle::ZERO,
-        };
-        let (sj, _, _) =
-            stepkit_core::step::tick(s, press, &world, &params, Timeline::default(), &registry, 0);
-        assert_eq!(sj.action, ActionId::JUMP, "{label} jumps");
-        assert!(
-            (sj.vel.y - 21.0).abs() < 1e-3,
-            "{label} halved vy {}",
-            sj.vel.y
-        );
-    }
+    // A jumps (halved vy in quicksand).
+    let press_a = RawInput {
+        stick_x: 0,
+        stick_y: 0,
+        buttons: buttons::A,
+        cam_yaw: Angle::ZERO,
+    };
+    let (sj, _, _) = stepkit_core::step::tick(
+        s,
+        press_a,
+        &world,
+        &params,
+        Timeline::default(),
+        &registry,
+        0,
+    );
+    assert_eq!(sj.action, ActionId::JUMP, "A jumps");
+    assert!((sj.vel.y - 21.0).abs() < 1e-3, "A halved vy {}", sj.vel.y);
+    // B punches (Phase E: waist-deep punch instead of a second jump).
+    let press_b = RawInput {
+        stick_x: 0,
+        stick_y: 0,
+        buttons: buttons::B,
+        cam_yaw: Angle::ZERO,
+    };
+    let (sp, _, _) = stepkit_core::step::tick(
+        s,
+        press_b,
+        &world,
+        &params,
+        Timeline::default(),
+        &registry,
+        0,
+    );
+    assert_eq!(sp.action, ActionId::PUNCHING, "B punches");
     let press_z = RawInput {
         stick_x: 0,
         stick_y: 0,
@@ -1680,4 +1699,413 @@ fn anchor_ledge_release_steep() {
         0,
     );
     assert_eq!(s.action, ActionId::FREEFALL, "steep ledge releases");
+}
+
+// ================= Phase E anchors =================
+
+/// Tick `total` frames from `state`, pressing `buttons` on the frames
+/// listed in `presses` (0-based). Returns the state after each frame.
+fn tick_seq(
+    state: CharacterState,
+    world: &SurfaceWorld,
+    presses: &[(u32, u16)],
+    total: u32,
+) -> Vec<CharacterState> {
+    let params = MovementParams::default();
+    let registry = ActionRegistry::sm64_style();
+    let mut state = state;
+    let mut prev = 0u16;
+    let mut out = Vec::with_capacity(total as usize);
+    for f in 0..total {
+        let b = presses
+            .iter()
+            .find(|(ff, _)| *ff == f)
+            .map(|(_, b)| *b)
+            .unwrap_or(0);
+        let input = RawInput {
+            stick_x: 0,
+            stick_y: 0,
+            buttons: b,
+            cam_yaw: Angle::ZERO,
+        };
+        let (s, _, _) = stepkit_core::step::tick(
+            state,
+            input,
+            world,
+            &params,
+            Timeline::default(),
+            &registry,
+            prev,
+        );
+        state = s;
+        prev = b;
+        out.push(state);
+    }
+    out
+}
+
+fn idle_on_floor() -> CharacterState {
+    CharacterState {
+        action: ActionId::IDLE,
+        pos: Vec3::new(0.0, 0.0, 0.0),
+        ..CharacterState::default()
+    }
+}
+
+#[test]
+fn anchor_combat_action_ids() {
+    // Phase E combat/knockback family IDs (decomp action index).
+    assert_eq!(ActionId::PUNCHING.0, 0x00800380);
+    assert_eq!(ActionId::MOVE_PUNCHING.0, 0x00800457);
+    assert_eq!(ActionId::JUMP_KICK.0, 0x018008AC);
+    assert_eq!(ActionId::BACKWARD_GROUND_KB.0, 0x00020462);
+    assert_eq!(ActionId::FORWARD_GROUND_KB.0, 0x00020463);
+    assert_eq!(ActionId::HARD_BACKWARD_GROUND_KB.0, 0x00020460);
+    assert_eq!(ActionId::HARD_FORWARD_GROUND_KB.0, 0x00020461);
+    assert_eq!(ActionId::SOFT_BACKWARD_GROUND_KB.0, 0x00020464);
+    assert_eq!(ActionId::SOFT_FORWARD_GROUND_KB.0, 0x00020465);
+    assert_eq!(ActionId::GROUND_BONK.0, 0x00020466);
+    let r = ActionRegistry::sm64_style();
+    for id in [
+        ActionId::PUNCHING,
+        ActionId::MOVE_PUNCHING,
+        ActionId::JUMP_KICK,
+        ActionId::BACKWARD_GROUND_KB,
+        ActionId::FORWARD_GROUND_KB,
+        ActionId::HARD_BACKWARD_GROUND_KB,
+        ActionId::HARD_FORWARD_GROUND_KB,
+        ActionId::SOFT_BACKWARD_GROUND_KB,
+        ActionId::SOFT_FORWARD_GROUND_KB,
+        ActionId::GROUND_BONK,
+    ] {
+        assert!(r.get(id).is_some(), "{id:?} registered");
+    }
+}
+
+#[test]
+fn anchor_punch_combo_chains() {
+    // B, B, B chains punch1 -> punch2 -> kick; the kick's 12-frame budget
+    // then expires into IDLE.
+    let world = flat_world();
+    let states = tick_seq(
+        idle_on_floor(),
+        &world,
+        &[(0, buttons::B), (3, buttons::B), (6, buttons::B)],
+        24,
+    );
+    assert_eq!(states[0].action, ActionId::PUNCHING);
+    assert_eq!(states[0].action_state, 0, "punch1");
+    assert_eq!(states[3].action_state, 1, "punch2 after 2nd B");
+    assert_eq!(states[6].action_state, 2, "kick after 3rd B");
+    // Stage 2 entered on frame 6 (timer reset); 12 frames -> IDLE on 18.
+    assert_eq!(states[17].action, ActionId::PUNCHING);
+    assert_eq!(states[18].action, ActionId::IDLE);
+}
+
+#[test]
+fn anchor_punch_no_chain_idles() {
+    // A single B: punch1 runs its 8-frame budget, then IDLE.
+    let world = flat_world();
+    let states = tick_seq(idle_on_floor(), &world, &[(0, buttons::B)], 12);
+    assert_eq!(states[0].action, ActionId::PUNCHING);
+    assert_eq!(states[7].action, ActionId::PUNCHING);
+    assert_eq!(states[8].action, ActionId::IDLE);
+}
+
+#[test]
+fn anchor_punch_a_first_frame_jump_kick() {
+    // A on the first punch frame (timer == 1) becomes a jump kick, vy 20.
+    let world = flat_world();
+    let states = tick_seq(
+        idle_on_floor(),
+        &world,
+        &[(0, buttons::B), (1, buttons::A)],
+        6,
+    );
+    assert_eq!(states[0].action, ActionId::PUNCHING);
+    assert_eq!(states[1].action, ActionId::JUMP_KICK, "A on punch frame 1");
+    assert!(
+        (states[1].vel.y - 20.0).abs() < 1e-3,
+        "jump kick vy {}",
+        states[1].vel.y
+    );
+}
+
+#[test]
+fn anchor_b_ground_routing() {
+    // B on the ground: dive only at speed >= 29 with a hard shove;
+    // otherwise MOVE_PUNCHING at speed >= 8, PUNCHING below.
+    let world = flat_world();
+    // Walking at speed 10, neutral stick: moving punch, momentum kept.
+    let walk = CharacterState {
+        action: ActionId::WALKING,
+        forward_speed: 10.0,
+        pos: Vec3::new(0.0, 0.0, 0.0),
+        vel: Vec3::new(0.0, 0.0, 10.0),
+        ..CharacterState::default()
+    };
+    let states = tick_seq(walk, &world, &[(0, buttons::B)], 3);
+    assert_eq!(states[0].action, ActionId::MOVE_PUNCHING);
+    assert!(
+        (states[0].forward_speed - 10.0).abs() < 1e-3,
+        "momentum kept {}",
+        states[0].forward_speed
+    );
+    // Walking at speed 5: stationary punch.
+    let slow = CharacterState {
+        forward_speed: 5.0,
+        vel: Vec3::new(0.0, 0.0, 5.0),
+        ..walk
+    };
+    let states = tick_seq(slow, &world, &[(0, buttons::B)], 3);
+    assert_eq!(states[0].action, ActionId::PUNCHING);
+    // Idle B: stationary punch.
+    let states = tick_seq(idle_on_floor(), &world, &[(0, buttons::B)], 3);
+    assert_eq!(states[0].action, ActionId::PUNCHING);
+    // Crouch B: stationary punch.
+    let crouch = CharacterState {
+        action: ActionId::CROUCH,
+        ..idle_on_floor()
+    };
+    let states = tick_seq(crouch, &world, &[(0, buttons::B)], 3);
+    assert_eq!(states[0].action, ActionId::PUNCHING);
+}
+
+#[test]
+fn anchor_jump_kick_slow_air() {
+    // B in slow air (forward speed <= 28) -> JUMP_KICK, vy = 20.
+    let world = flat_world();
+    let air = air_state(ActionId::JUMP, 10.0);
+    let states = tick_seq(air, &world, &[(0, buttons::B)], 3);
+    assert_eq!(states[0].action, ActionId::JUMP_KICK);
+    assert!(
+        (states[0].vel.y - 20.0).abs() < 1e-3,
+        "vy {}",
+        states[0].vel.y
+    );
+    // Horizontal speed is kept.
+    assert!(
+        (states[0].forward_speed - 10.0).abs() < 1.0,
+        "keeps horizontal {}",
+        states[0].forward_speed
+    );
+    // B in fast air (speed > 28) still dives.
+    let fast = air_state(ActionId::JUMP, 30.0);
+    let states = tick_seq(fast, &world, &[(0, buttons::B)], 3);
+    assert_eq!(states[0].action, ActionId::DIVE, "fast air B still dives");
+}
+
+#[test]
+fn anchor_ground_kb_decel_windows() {
+    // Each ground knockback decays to IDLE at its frame window.
+    let world = flat_world();
+    for (id, frames) in [
+        (ActionId::BACKWARD_GROUND_KB, 22u32),
+        (ActionId::FORWARD_GROUND_KB, 20u32),
+        (ActionId::HARD_BACKWARD_GROUND_KB, 43u32),
+        (ActionId::HARD_FORWARD_GROUND_KB, 21u32),
+        (ActionId::SOFT_BACKWARD_GROUND_KB, 100u32),
+        (ActionId::SOFT_FORWARD_GROUND_KB, 100u32),
+        (ActionId::GROUND_BONK, 32u32),
+    ] {
+        let mut start = CharacterState {
+            action: id,
+            forward_speed: -15.0,
+            pos: Vec3::new(0.0, 0.0, 0.0),
+            vel: Vec3::new(0.0, 0.0, -15.0),
+            ..CharacterState::default()
+        };
+        if id == ActionId::GROUND_BONK {
+            // The bonk moves on the slide vector.
+            start.slide_vel_x = 0.0;
+            start.slide_vel_z = -15.0;
+        }
+        let states = tick_seq(start, &world, &[], frames + 2);
+        // The window ends during the tick when timer >= frames.
+        assert_eq!(
+            states[frames as usize - 2].action,
+            id,
+            "{id:?} still active at frame {}",
+            frames - 2
+        );
+        assert_eq!(
+            states[frames as usize - 1].action,
+            ActionId::IDLE,
+            "{id:?} idles at frame {}",
+            frames - 1
+        );
+    }
+}
+
+#[test]
+fn anchor_air_kb_landing_routing() {
+    // Air knockbacks land into the matching ground knockbacks; the hard
+    // flag travels as the action id; soft bonk routes by speed sign.
+    let world = flat_world();
+    for (air_id, ground_id) in [
+        (ActionId::BACKWARD_AIR_KB, ActionId::BACKWARD_GROUND_KB),
+        (
+            ActionId::HARD_BACKWARD_AIR_KB,
+            ActionId::HARD_BACKWARD_GROUND_KB,
+        ),
+        (ActionId::FORWARD_AIR_KB, ActionId::FORWARD_GROUND_KB),
+        (
+            ActionId::HARD_FORWARD_AIR_KB,
+            ActionId::HARD_FORWARD_GROUND_KB,
+        ),
+    ] {
+        let speed = if matches!(
+            air_id,
+            ActionId::BACKWARD_AIR_KB | ActionId::HARD_BACKWARD_AIR_KB
+        ) {
+            -15.0
+        } else {
+            16.0
+        };
+        let mut st = air_state(air_id, speed);
+        st.vel = Vec3::new(0.0, -10.0, speed);
+        // Tick until touchdown.
+        let mut landed = ActionId::IDLE;
+        for _ in 0..120 {
+            let (s, _, _) = stepkit_core::step::tick(
+                st,
+                neutral_input(),
+                &world,
+                &MovementParams::default(),
+                Timeline::default(),
+                &ActionRegistry::sm64_style(),
+                0,
+            );
+            st = s;
+            if st.action == ground_id {
+                landed = ground_id;
+                break;
+            }
+        }
+        assert_eq!(landed, ground_id, "{air_id:?} -> {ground_id:?}");
+    }
+    // Soft bonk: negative speed -> soft backward, else soft forward.
+    for (speed, expect) in [
+        (-10.0, ActionId::SOFT_BACKWARD_GROUND_KB),
+        (10.0, ActionId::SOFT_FORWARD_GROUND_KB),
+    ] {
+        let mut st = air_state(ActionId::SOFT_BONK, speed);
+        st.vel = Vec3::new(0.0, -10.0, speed);
+        let mut landed = ActionId::IDLE;
+        for _ in 0..120 {
+            let (s, _, _) = stepkit_core::step::tick(
+                st,
+                neutral_input(),
+                &world,
+                &MovementParams::default(),
+                Timeline::default(),
+                &ActionRegistry::sm64_style(),
+                0,
+            );
+            st = s;
+            if st.action == expect {
+                landed = expect;
+                break;
+            }
+        }
+        assert_eq!(landed, expect, "soft bonk at speed {speed}");
+    }
+}
+
+/// Flat floor with a wall ahead at z = 400..500 for slide-bonk tests.
+fn slide_bonk_world() -> SurfaceWorld {
+    let mut w = SurfaceWorld::new();
+    w.add_box(
+        Vec3::new(-2000.0, -100.0, -2000.0),
+        Vec3::new(2000.0, 0.0, 2000.0),
+        SurfaceKind::Default,
+        0,
+    );
+    w.add_box(
+        Vec3::new(-200.0, 0.0, 400.0),
+        Vec3::new(200.0, 600.0, 500.0),
+        SurfaceKind::Default,
+        0,
+    );
+    w
+}
+
+#[test]
+fn anchor_slide_bonk_routing() {
+    // Butt slide into a wall: speed > 16 -> GROUND_BONK with a reflected
+    // slide vector and mirrored facing; speed <= 16 -> DECELERATING.
+    let world = slide_bonk_world();
+    let params = MovementParams::default();
+    let registry = ActionRegistry::sm64_style();
+    // Fast slide toward +z at speed 30.
+    let mut st = CharacterState {
+        action: ActionId::BUTT_SLIDE,
+        slide_vel_x: 0.0,
+        slide_vel_z: 30.0,
+        forward_speed: 30.0,
+        face_yaw: Angle::ZERO, // facing +z, toward the wall
+        pos: Vec3::new(0.0, 0.0, 300.0),
+        vel: Vec3::new(0.0, 0.0, 30.0),
+        ..CharacterState::default()
+    };
+    let mut bonked = false;
+    for _ in 0..40 {
+        let (s, _, _) = stepkit_core::step::tick(
+            st,
+            neutral_input(),
+            &world,
+            &params,
+            Timeline::default(),
+            &registry,
+            0,
+        );
+        st = s;
+        if st.action == ActionId::GROUND_BONK {
+            bonked = true;
+            break;
+        }
+    }
+    assert!(bonked, "fast slide wall hit -> GROUND_BONK");
+    assert!(
+        st.slide_vel_z < 0.0,
+        "slide vector reflected {}",
+        st.slide_vel_z
+    );
+    // Facing mirrored to -z (away from the wall): yaw near 180 deg.
+    let yaw_deg = st.face_yaw.to_degrees().abs();
+    assert!(
+        (yaw_deg - 180.0).abs() < 5.0,
+        "facing mirrored, yaw {yaw_deg}"
+    );
+    // Slow slide at speed 12, closer to the wall -> DECELERATING.
+    let mut st = CharacterState {
+        action: ActionId::BUTT_SLIDE,
+        slide_vel_x: 0.0,
+        slide_vel_z: 12.0,
+        forward_speed: 12.0,
+        face_yaw: Angle::ZERO,
+        pos: Vec3::new(0.0, 0.0, 350.0),
+        vel: Vec3::new(0.0, 0.0, 12.0),
+        ..CharacterState::default()
+    };
+    let mut stopped = false;
+    for _ in 0..40 {
+        let (s, _, _) = stepkit_core::step::tick(
+            st,
+            neutral_input(),
+            &world,
+            &params,
+            Timeline::default(),
+            &registry,
+            0,
+        );
+        st = s;
+        if st.action == ActionId::DECELERATING {
+            stopped = true;
+            break;
+        }
+        // Must not bonk at low speed.
+        assert_ne!(st.action, ActionId::GROUND_BONK, "slow slide must not bonk");
+    }
+    assert!(stopped, "slow slide wall hit -> DECELERATING");
 }
