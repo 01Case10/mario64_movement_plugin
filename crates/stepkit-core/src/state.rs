@@ -6,37 +6,61 @@
 use crate::angles::Angle;
 use glam::Vec3;
 
-/// Action identifiers. Built-in IDs mirror the community-documented action
-/// index where it is public knowledge (see `spec/actions/`); custom actions
-/// start at `0x0100_0000` via [`ActionId::custom`].
+/// Action identifiers. Built-in IDs mirror the decomp-documented action
+/// index (behavioral reference only; no decomp source is used in this
+/// repo). A handful of IDs predate that reference and stay STEPKIT-
+/// PROVISIONAL (bit 30 set, a bit the community documents as unused):
+/// they are NOT community values and will be replaced if/when the
+/// community documents the real ones.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct ActionId(pub u32);
 
 impl ActionId {
-    // --- Verified against community documentation (see spec/provenance/ukikipedia-notes.md).
-    // --- Every other ID below is STEPKIT-PROVISIONAL (bit 30 set, a bit the
-    // --- community documents as unused): it is NOT a community value and will
-    // --- be replaced if/when the community documents the real one.
+    // --- Verified against the decomp action index (behavioral reference
+    // --- only; see spec/provenance/ukikipedia-notes.md for the public-data
+    // --- trail). A few IDs below remain STEPKIT-PROVISIONAL (bit 30 set):
+    // --- NOT community values, replaced when the community documents them.
 
     /// Idle: standing still on the ground.
     /// spec: actions.idle (verified: wiki:Idle@20401)
     pub const IDLE: ActionId = ActionId(0x0C400201);
     /// Walking: stick-held ground locomotion (covers all speeds; there is no
     /// separate community-documented "running" action).
-    /// spec: actions.walking (PROVISIONAL -- wiki:Walking lists "todo")
-    pub const WALKING: ActionId = ActionId(0x40000440);
+    /// spec: actions.walking (verified: decomp ACT_WALKING)
+    pub const WALKING: ActionId = ActionId(0x04000440);
     /// Turning around while moving.
     /// spec: actions.turning_around (verified: wiki:Turning Around@18182)
     pub const TURNING_AROUND: ActionId = ActionId(0x00000443);
+    /// Finish turning around: re-accelerate after the turn.
+    /// spec: actions.finish_turning_around (verified: decomp ACT_FINISH_TURNING_AROUND)
+    pub const FINISH_TURNING_AROUND: ActionId = ActionId(0x00000444);
     /// Braking: hard stop from speed >= 16 with neutral stick.
-    /// spec: actions.braking (PROVISIONAL)
-    pub const BRAKING: ActionId = ActionId(0x40000444);
+    /// spec: actions.braking (verified: decomp ACT_BRAKING)
+    pub const BRAKING: ActionId = ActionId(0x04000445);
     /// Decelerating: gentle stop from speed < 16 with neutral stick.
-    /// spec: actions.decelerating (PROVISIONAL)
-    pub const DECELERATING: ActionId = ActionId(0x40000445);
-    /// Landing from a jump.
-    /// spec: actions.landing (PROVISIONAL)
-    pub const LANDING: ActionId = ActionId(0x40000446);
+    /// spec: actions.decelerating (verified: decomp ACT_DECELERATING)
+    pub const DECELERATING: ActionId = ActionId(0x0400044A);
+    /// Landing from a single jump.
+    /// spec: actions.jump_land (verified: decomp ACT_JUMP_LAND)
+    pub const JUMP_LAND: ActionId = ActionId(0x04000470);
+    /// Landing from a freefall.
+    /// spec: actions.freefall_land (verified: decomp ACT_FREEFALL_LAND)
+    pub const FREEFALL_LAND: ActionId = ActionId(0x04000471);
+    /// Landing from a double jump.
+    /// spec: actions.double_jump_land (verified: decomp ACT_DOUBLE_JUMP_LAND)
+    pub const DOUBLE_JUMP_LAND: ActionId = ActionId(0x04000472);
+    /// Landing from a side flip.
+    /// spec: actions.side_flip_land (verified: decomp ACT_SIDE_FLIP_LAND)
+    pub const SIDE_FLIP_LAND: ActionId = ActionId(0x04000473);
+    /// Landing from a triple jump (A press suppressed).
+    /// spec: actions.triple_jump_land (verified: decomp ACT_TRIPLE_JUMP_LAND)
+    pub const TRIPLE_JUMP_LAND: ActionId = ActionId(0x04000478);
+    /// Landing from a long jump (ends crouching, keeps Z-stance).
+    /// spec: actions.long_jump_land (verified: decomp ACT_LONG_JUMP_LAND)
+    pub const LONG_JUMP_LAND: ActionId = ActionId(0x00000479);
+    /// Landing from a backflip (A stripped unless Z held).
+    /// spec: actions.backflip_land (verified: decomp ACT_BACKFLIP_LAND)
+    pub const BACKFLIP_LAND: ActionId = ActionId(0x0400047A);
     /// Single jump, airborne.
     /// spec: actions.jump (verified: wiki:Single Jump@19309)
     pub const JUMP: ActionId = ActionId(0x03000880);
@@ -58,6 +82,15 @@ impl ActionId {
     /// Dive, airborne.
     /// spec: actions.dive (verified: wiki:Dive@19303)
     pub const DIVE: ActionId = ActionId(0x0188088A);
+    /// Slide kick, airborne (B during a fast crouch slide).
+    /// spec: actions.slide_kick (verified: decomp ACT_SLIDE_KICK)
+    pub const SLIDE_KICK: ActionId = ActionId(0x018008AA);
+    /// Forward rollout: exit from dive/slide-kick slides.
+    /// spec: actions.forward_rollout (verified: decomp ACT_FORWARD_ROLLOUT)
+    pub const FORWARD_ROLLOUT: ActionId = ActionId(0x010008A6);
+    /// Backward rollout: exit from dive/slide-kick slides.
+    /// spec: actions.backward_rollout (verified: decomp ACT_BACKWARD_ROLLOUT)
+    pub const BACKWARD_ROLLOUT: ActionId = ActionId(0x010008AD);
     /// Freefall: walked off a ledge or jump expired.
     /// spec: actions.freefall (PROVISIONAL)
     pub const FREEFALL: ActionId = ActionId(0x4000088C);
@@ -80,8 +113,20 @@ impl ActionId {
     /// spec: actions.air_knockback (PROVISIONAL)
     pub const AIR_KNOCKBACK: ActionId = ActionId(0x400008B1);
     /// Butt slide.
-    /// spec: actions.butt_slide (PROVISIONAL)
-    pub const BUTT_SLIDE: ActionId = ActionId(0x40000447);
+    /// spec: actions.butt_slide (verified: decomp ACT_BUTT_SLIDE)
+    pub const BUTT_SLIDE: ActionId = ActionId(0x00840452);
+    /// Stomach slide (slide trigger while facing uphill/flat).
+    /// spec: actions.stomach_slide (verified: decomp ACT_STOMACH_SLIDE)
+    pub const STOMACH_SLIDE: ActionId = ActionId(0x008C0453);
+    /// Dive slide: landing from a dive.
+    /// spec: actions.dive_slide (verified: decomp ACT_DIVE_SLIDE)
+    pub const DIVE_SLIDE: ActionId = ActionId(0x00880456);
+    /// Crouch slide: Z while moving.
+    /// spec: actions.crouch_slide (verified: decomp ACT_CROUCH_SLIDE)
+    pub const CROUCH_SLIDE: ActionId = ActionId(0x04808459);
+    /// Slide-kick slide: ground continuation of an airborne slide kick.
+    /// spec: actions.slide_kick_slide (verified: decomp ACT_SLIDE_KICK_SLIDE)
+    pub const SLIDE_KICK_SLIDE: ActionId = ActionId(0x0080045A);
 
     /// Custom action IDs start here; the registry enforces the range.
     pub const CUSTOM_BASE: u32 = 0x0100_0000;
@@ -140,6 +185,9 @@ pub struct CharacterState {
     pub wall_normal: Vec3,
     /// The air action the last landing came from (for jump chaining).
     pub land_from: ActionId,
+    /// Downward speed at the last landing (from the landing goto arg).
+    /// Consumed by fall-damage/squish logic.
+    pub last_fall_speed: f32,
     /// Gravity direction. Fixed to +Y in v1 (see open decision 7); stored so
     /// planetary gravity can be added later without rewriting every action.
     pub up: Vec3,
@@ -170,6 +218,7 @@ impl Default for CharacterState {
             wall_kick_timer: 0,
             wall_normal: Vec3::X,
             land_from: ActionId::IDLE,
+            last_fall_speed: 0.0,
             up: Vec3::Y,
             warped: false,
         }
@@ -206,6 +255,7 @@ impl CharacterState {
         self.wall_normal.x.to_bits().hash(&mut h);
         self.wall_normal.z.to_bits().hash(&mut h);
         self.land_from.0.hash(&mut h);
+        self.last_fall_speed.to_bits().hash(&mut h);
         h.finish()
     }
 }

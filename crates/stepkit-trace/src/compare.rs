@@ -190,6 +190,8 @@ mod tests {
             vel_x: 0.0,
             vel_y: 0.0,
             vel_z: 0.0,
+            slide_vel_x: 0.0,
+            slide_vel_z: 0.0,
             fwd_speed: 0.0,
             face_yaw: 0,
             face_pitch: 0,

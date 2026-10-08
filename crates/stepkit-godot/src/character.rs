@@ -143,7 +143,7 @@ impl StepChar3D {
     #[constant]
     const ACT_IDLE: i64 = 0x0C400201;
     #[constant]
-    const ACT_WALKING: i64 = 0x40000440;
+    const ACT_WALKING: i64 = 0x04000440;
     #[constant]
     const ACT_JUMP: i64 = 0x03000880;
     #[constant]
@@ -297,7 +297,6 @@ impl StepChar3D {
                 Event::LedgeGrab => {
                     self.base_mut().emit_signal("ledge_grabbed", &[]);
                 }
-                Event::AnimationEvent { .. } => {}
             }
         }
     }

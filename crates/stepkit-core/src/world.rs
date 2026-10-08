@@ -11,7 +11,9 @@ pub enum SurfaceKind {
     Default,
     /// Steep enough to slide on.
     Slide,
-    /// Kills horizontal speed (quicksand-like); v1 treats as Default.
+    /// Kills horizontal speed (quicksand-like). v1: no slope assist
+    /// (maps to the not-slippery accel); the full quicksand sink/depth
+    /// system lands in plan Phase D.
     Quicksand,
     /// Game-defined kinds start here; the meaning is the game's own.
     Custom(u8),

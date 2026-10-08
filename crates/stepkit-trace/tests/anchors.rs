@@ -456,7 +456,7 @@ fn anchor_jump_chain() {
         );
         let _ = t;
         state = s;
-        if state.action == ActionId::LANDING {
+        if state.action == ActionId::JUMP_LAND {
             landed = true;
             break;
         }
@@ -529,13 +529,13 @@ fn anchor_no_teleport_landing() {
             );
         }
         st = ns;
-        if st.action == ActionId::LANDING {
+        if st.action == ActionId::JUMP_LAND {
             break;
         }
     }
     assert!(max_y >= 199.0, "full jump should reach ~200, got {max_y}");
     assert!(fall_frames >= 5, "fall should take several frames");
-    assert_eq!(st.action, ActionId::LANDING);
+    assert_eq!(st.action, ActionId::JUMP_LAND);
     assert!((st.pos.y - 0.0).abs() < 1e-3, "landed on the floor");
 }
 

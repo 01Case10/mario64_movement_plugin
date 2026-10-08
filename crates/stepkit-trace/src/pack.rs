@@ -6,7 +6,7 @@
 
 use crate::trace::TraceFrame;
 
-const MAGIC: &[u8; 8] = b"STPKTRC\x03"; // v3: added wall_kick_timer, wall_normal_yaw
+const MAGIC: &[u8; 8] = b"STPKTRC\x04"; // v4: added slide_vel_x, slide_vel_z
 
 /// Pack frames into the binary format.
 pub fn pack_frames(frames: &[TraceFrame]) -> Vec<u8> {
@@ -26,6 +26,8 @@ pub fn pack_frames(frames: &[TraceFrame]) -> Vec<u8> {
             f.vel_x,
             f.vel_y,
             f.vel_z,
+            f.slide_vel_x,
+            f.slide_vel_z,
             f.fwd_speed,
             f.floor_y,
             f.ceil_y,
@@ -98,6 +100,8 @@ pub fn unpack_frames(data: &[u8]) -> Option<Vec<TraceFrame>> {
         let vel_x = read_f32(data, &mut pos)?;
         let vel_y = read_f32(data, &mut pos)?;
         let vel_z = read_f32(data, &mut pos)?;
+        let slide_vel_x = read_f32(data, &mut pos)?;
+        let slide_vel_z = read_f32(data, &mut pos)?;
         let fwd_speed = read_f32(data, &mut pos)?;
         let floor_y = read_f32(data, &mut pos)?;
         let ceil_y = read_f32(data, &mut pos)?;
@@ -133,6 +137,8 @@ pub fn unpack_frames(data: &[u8]) -> Option<Vec<TraceFrame>> {
             vel_x,
             vel_y,
             vel_z,
+            slide_vel_x,
+            slide_vel_z,
             fwd_speed,
             face_yaw,
             face_pitch,
@@ -172,6 +178,8 @@ mod tests {
             vel_x: 0.125,
             vel_y: -4.0,
             vel_z: 0.0,
+            slide_vel_x: 1.0,
+            slide_vel_z: -2.0,
             fwd_speed: 48.5,
             face_yaw: 1234,
             face_pitch: -56,
