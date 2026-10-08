@@ -41,4 +41,8 @@
         ),
     ],
     compare: AirDefault,
+    asserts: [
+        // Ground-truth entry velocity (decomp set_mario_action_airborne ACT_BACKFLIP (62.0f)).
+        ActionEntryVelY(action: "Backflip", expected: 62.0, tol: 1.0),
+    ],
 )

@@ -46,4 +46,8 @@
         ),
     ],
     compare: AirDefault,
+    asserts: [
+        // Ground-truth entry velocity (decomp act_forward_rollout (30.0f)).
+        ActionEntryVelY(action: "ForwardRollout", expected: 30.0, tol: 1.0),
+    ],
 )

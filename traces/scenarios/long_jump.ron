@@ -36,4 +36,8 @@
         ),
     ],
     compare: AirDefault,
+    asserts: [
+        // Ground-truth entry velocity (decomp set_mario_action_airborne ACT_LONG_JUMP (30.0f)).
+        ActionEntryVelY(action: "LongJump", expected: 30.0, tol: 1.0),
+    ],
 )

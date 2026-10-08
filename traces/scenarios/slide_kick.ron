@@ -51,4 +51,8 @@
         ),
     ],
     compare: GroundDefault,
+    asserts: [
+        // Ground-truth entry velocity (decomp set_mario_action_airborne ACT_SLIDE_KICK (12.0f)).
+        ActionEntryVelY(action: "SlideKick", expected: 12.0, tol: 1.0),
+    ],
 )

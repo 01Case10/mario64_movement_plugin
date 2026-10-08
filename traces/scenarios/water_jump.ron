@@ -77,4 +77,8 @@
         ),
     ],
     compare: AirDefault,
+    asserts: [
+        // Ground-truth entry velocity (decomp set_mario_action_airborne ACT_WATER_JUMP (42.0f; overwrites the 62.0f in check_water_jump)).
+        ActionEntryVelY(action: "WaterJump", expected: 42.0, tol: 1.0),
+    ],
 )
