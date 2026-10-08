@@ -9,6 +9,7 @@
 //! (wiki:Dive@19303). Long jump and ground pound numbers are (verify).
 
 use super::{ActionCx, ActionHandler, ActionResult};
+use crate::angles::Angle;
 use crate::events::Event;
 use crate::input::buttons;
 use crate::state::ActionId;
@@ -37,6 +38,7 @@ struct AirConfig {
     gravity: f32,
     terminal: f32,
     steer_rate: u16,
+    air_drag_threshold: f32,
     allow_dive: bool,
     allow_pound: bool,
     /// Whether this action may ledge-grab (documented per action).
@@ -73,23 +75,44 @@ fn air_common(cx: &mut ActionCx, prev_buttons: u16, cfg: &AirConfig) -> Option<A
         return Some(r);
     }
     let p = cfg;
-    // Jump-height control: A released while rising fast quarters vy.
-    // (wiki:Gravity@20294; which actions use it is (verify))
-    if p.height_control
-        && cx.input.buttons & buttons::A == 0
-        && cx.state.vel.y > cx.params.jump_height_control_threshold
-    {
-        cx.state.vel.y /= 4.0;
+    // Air control: forward drag, stick acceleration, sideways velocity.
+    // (Behavioral model: forwardVel approaches 0, stick adds forward/sideways.)
+    let mut fwd = cx.state.forward_speed;
+    // Approach 0 by 0.35.
+    if fwd > 0.0 {
+        fwd = (fwd - 0.35).max(0.0);
+    } else if fwd < 0.0 {
+        fwd = (fwd + 0.35).min(0.0);
     }
-    cx.state.vel.y = (cx.state.vel.y - p.gravity).max(p.terminal);
-    if p.steer_rate > 0 {
-        if let Some(iy) = cx.intended_yaw() {
-            cx.state.face_yaw = cx.state.face_yaw.approach(iy, p.steer_rate);
+    let mut sideways = 0.0;
+    if let Some(iy) = cx.intended_yaw() {
+        let mag = cx.intended_magnitude() as f32 / 32.0;
+        if mag > 0.01 {
+            let dyaw = iy.diff_to(cx.state.face_yaw);
+            let dyaw_rad = dyaw as f32 / 65536.0 * std::f32::consts::TAU;
+            // Forward: 1.5 * cos(dYaw) * mag. Sideways: 10.0 * sin(dYaw) * mag.
+            fwd += mag * dyaw_rad.cos() * 1.5;
+            sideways = mag * dyaw_rad.sin() * 10.0;
+            // Turn facing: 512 * sin(dYaw) * mag (in angle units).
+            let turn = Angle((512.0 * dyaw_rad.sin() * mag) as i16);
+            cx.state.face_yaw = cx.state.face_yaw.wrapping_add(turn);
         }
     }
+    // Speed drag and backward recovery.
+    let drag_threshold = p.air_drag_threshold;
+    if fwd > drag_threshold {
+        fwd -= 1.0;
+    }
+    if fwd < -16.0 {
+        fwd += 2.0;
+    }
+    cx.state.forward_speed = fwd;
+    // Construct velocity from forward + sideways components.
     let (fx, fz) = cx.forward_xz();
-    cx.state.vel.x = fx * cx.state.forward_speed;
-    cx.state.vel.z = fz * cx.state.forward_speed;
+    // Right vector: (fz, -fx) for yaw (sin, cos).
+    cx.state.vel.x = fx * fwd + fz * sideways;
+    cx.state.vel.z = fz * fwd - fx * sideways;
+    // Gravity applies after movement (moved below the step).
     let vy_before_landing = cx.state.vel.y;
     let out = step_air(&cx.state, cx.world, cx.params);
     cx.state.pos = out.pos;
@@ -126,6 +149,15 @@ fn air_common(cx: &mut ActionCx, prev_buttons: u16, cfg: &AirConfig) -> Option<A
         cx.timeline.slot = super::ground::slot::LAND;
         return Some(cx.goto(ActionId::LANDING, fall_speed.max(0.0) as u32));
     }
+    // Gravity applies after movement and collision.
+    // Jump-height control: A released while rising fast quarters vy.
+    if p.height_control
+        && cx.input.buttons & buttons::A == 0
+        && cx.state.vel.y > cx.params.jump_height_control_threshold
+    {
+        cx.state.vel.y /= 4.0;
+    }
+    cx.state.vel.y = (cx.state.vel.y - p.gravity).max(p.terminal);
     None
 }
 
@@ -135,6 +167,7 @@ fn base_air_config() -> AirConfig {
         gravity: 4.0,
         terminal: -75.0,
         steer_rate: 0x800, // spec: air.steer_rate (verify)
+        air_drag_threshold: 32.0,
         allow_dive: true,
         allow_pound: true,
         can_ledge_grab: true,
@@ -325,6 +358,7 @@ air_action!(
     AirConfig {
         height_control: false, // (verify)
         steer_rate: 0,         // committed (verify)
+        air_drag_threshold: 32.0,
         allow_dive: false,
         allow_pound: false,
         ..base_air_config()
@@ -480,6 +514,7 @@ impl ActionHandler for AirKnockback {
             &AirConfig {
                 height_control: false,
                 steer_rate: 0, // stunned (verify)
+                air_drag_threshold: 32.0,
                 allow_dive: false,
                 allow_pound: false,
                 can_ledge_grab: false,

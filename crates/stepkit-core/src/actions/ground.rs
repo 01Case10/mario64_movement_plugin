@@ -220,8 +220,10 @@ impl ActionHandler for Walking {
         }
         nspeed = nspeed.min(p.walk_hard_cap);
         // Slope: downhill/uphill adjustment scaled by steepness.
+        // Steepness is the horizontal magnitude of the (unit) surface normal:
+        // sqrt(nx^2 + nz^2). (Pure vector math; 1 - ny understates it.)
         if let Some(f) = cx.world.find_floor(cx.state.pos, 1.0) {
-            let steep = (1.0 - f.normal.y).max(0.0);
+            let steep = (f.normal.x * f.normal.x + f.normal.z * f.normal.z).sqrt();
             if steep > 1e-4 {
                 let downhill = (-f.normal.x, -f.normal.z);
                 let (fx, fz) = cx.forward_xz();
@@ -544,7 +546,7 @@ impl ActionHandler for ButtSlide {
             return cx.goto(ActionId::DECELERATING, 0);
         }
         let n = floor.unwrap().normal;
-        let steep = (1.0 - n.y).max(0.0);
+        let steep = (n.x * n.x + n.z * n.z).sqrt();
         // Downhill direction (xz).
         let mut dh = (-n.x, -n.z);
         let dh_len = (dh.0 * dh.0 + dh.1 * dh.1).sqrt();

@@ -96,24 +96,37 @@ pub fn step_ground(
     let mut wall_normal = Vec3::ZERO;
     let mut walked_off = false;
     for _ in 0..QUARTER_STEPS {
-        let step = Vec3::new(vx * 0.25, 0.0, vz * 0.25);
+        // Project horizontal velocity onto the slope via floor normal.
+        let ny = floor.map(|f| f.normal.y).unwrap_or(1.0);
+        let step = Vec3::new(vx * 0.25 * ny, 0.0, vz * 0.25 * ny);
         let mut proposed = pos + step;
-        // Walls.
-        let wr = world.resolve_walls(proposed, params.height * 0.5, params.radius);
+        // Walls: dual radii (upper/lower).
+        // Lower wall: offset 30, radius 24. Upper wall: offset 60, radius 50.
+        let wr_low = world.resolve_walls(proposed, 30.0, 24.0);
+        let wr_high = world.resolve_walls(proposed, 60.0, 50.0);
+        let wr = if wr_low.hit { wr_low } else { wr_high };
         if wr.hit {
             wall_hit = true;
             wall_normal = wr.normal;
             proposed = wr.pos;
         }
-        // Floor.
+        // Floor with +100 step-up test.
         match world.find_floor(proposed, 1.0) {
             None => {
                 walked_off = true;
                 pos = proposed;
             }
             Some(f) => {
-                if f.y > pos.y + params.ground_step_up {
-                    // Too tall to step onto: treat as a wall, revert.
+                // Ceiling check: +160.
+                if let Some(c) = world.find_ceiling(proposed, 160.0) {
+                    if f.y + 160.0 >= c.y {
+                        wall_hit = true;
+                        // (keep pre-step pos)
+                        continue;
+                    }
+                }
+                if f.y > pos.y + 100.0 {
+                    // Too tall: treat as wall, revert.
                     wall_hit = true;
                     // (keep pre-step pos)
                 } else if f.y < pos.y - params.ground_step_down {
