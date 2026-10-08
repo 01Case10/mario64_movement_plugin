@@ -1,0 +1,54 @@
+(
+    id: "dive_slide_rollout",
+    tags: [
+        "air",
+        "dive",
+        "slide",
+    ],
+    geometry: [
+        Box((
+            min: (-2000.0, -100.0, -2000.0),
+            max: (2000.0, 0.0, 2000.0),
+            kind: 0,
+        )),
+    ],
+    start: (
+        pos: (0, 0, 0),
+        yaw_deg: 0.0,
+        action: "Idle",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        Hold(
+            frames: 40,
+            stick: (0, 80),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, 80),
+            buttons: 2,
+        ),
+        Hold(
+            frames: 25,
+            stick: (0, 0),
+            buttons: 0,
+        ),
+        Hold(
+            frames: 8,
+            stick: (0, 0),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, 0),
+            buttons: 1,
+        ),
+        Hold(
+            frames: 45,
+            stick: (0, 0),
+            buttons: 0,
+        ),
+    ],
+    compare: AirDefault,
+)

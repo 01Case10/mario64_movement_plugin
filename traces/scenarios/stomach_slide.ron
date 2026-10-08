@@ -1,0 +1,43 @@
+(
+    id: "stomach_slide",
+    tags: [
+        "ground",
+        "slide",
+    ],
+    geometry: [
+        Box((
+            min: (-2000.0, -100.0, -2000.0),
+            max: (2000.0, 0.0, 600.0),
+            kind: 0,
+        )),
+        Ramp((
+            origin: (0.0, 0.0, 100.0),
+            dir: (0.0, 1.0),
+            length: 400.0,
+            height: 40.0,
+            width: 400.0,
+            kind: 1,
+        )),
+    ],
+    start: (
+        pos: (0, 0, -200),
+        yaw_deg: 0.0,
+        action: "Idle",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        Hold(
+            frames: 30,
+            stick: (0, 80),
+            buttons: 0,
+        ),
+        Hold(
+            frames: 60,
+            stick: (0, 0),
+            buttons: 0,
+        ),
+    ],
+    compare: GroundDefault,
+)

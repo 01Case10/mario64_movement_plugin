@@ -1,0 +1,53 @@
+(
+    id: "crouch_slide_chain",
+    tags: [
+        "ground",
+        "slide",
+    ],
+    geometry: [
+        Box((
+            min: (-2000.0, -100.0, -2000.0),
+            max: (2000.0, 0.0, 4000.0),
+            kind: 0,
+        )),
+    ],
+    start: (
+        pos: (0, 0, 0),
+        yaw_deg: 0.0,
+        action: "Idle",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        Hold(
+            frames: 40,
+            stick: (0, 80),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, 80),
+            buttons: 4,
+        ),
+        Hold(
+            frames: 8,
+            stick: (0, 80),
+            buttons: 4,
+        ),
+        Press(
+            stick: (0, 80),
+            buttons: 5,
+        ),
+        Hold(
+            frames: 70,
+            stick: (0, 0),
+            buttons: 0,
+        ),
+        Hold(
+            frames: 10,
+            stick: (0, 0),
+            buttons: 0,
+        ),
+    ],
+    compare: GroundDefault,
+)
