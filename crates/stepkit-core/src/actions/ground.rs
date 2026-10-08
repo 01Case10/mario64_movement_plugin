@@ -16,7 +16,7 @@ use crate::events::Event;
 use crate::input::buttons;
 use crate::state::ActionId;
 use crate::step::step_ground;
-use crate::world::SurfaceKind;
+use crate::world::{SurfaceClass, SurfaceKind};
 
 /// Animation slot ids (owned by the core; see stepkit-anim manifest).
 pub mod slot {
@@ -44,12 +44,39 @@ fn ground_prelude(cx: &mut ActionCx) -> Option<ActionResult> {
     if let Some(wl) = crate::actions::water::water_plunge_surface(cx) {
         return Some(crate::actions::water::enter_water_plunge(cx, wl));
     }
+    // Peak height only tracks airtime; ground actions reset it.
+    cx.state.peak_height = 0.0;
     let floor = cx.world.find_floor(cx.state.pos, 1.0);
     match floor {
         Some(f) => {
             if f.y < cx.state.pos.y - cx.params.ground_step_down {
                 // Floor too far below: walked off.
                 return Some(cx.goto(ActionId::FREEFALL, 0));
+            }
+            // Quicksand sink: moving actions sink 0.25/frame, stationary
+            // 0.5/frame; depth floors at 1.1 on entry. v1 treats all
+            // quicksand as shallow (cap 10); depths at/above 30 (deep
+            // quicksand, currently only via direct state setup) keep
+            // sinking toward the deep cap of 60 and trigger IN_QUICKSAND.
+            // (decomp-derived quicksand model)
+            if f.kind == SurfaceKind::Quicksand && cx.state.action != ActionId::QUICKSAND_JUMP_LAND
+            {
+                let rate = if is_moving_action(cx.state.action) {
+                    0.25
+                } else {
+                    0.5
+                };
+                let grown = (cx.state.quicksand_depth + rate).max(1.1);
+                cx.state.quicksand_depth = if grown < 30.0 {
+                    grown.min(10.0)
+                } else {
+                    grown.min(60.0)
+                };
+                if cx.state.quicksand_depth > 30.0 && cx.state.action != ActionId::IN_QUICKSAND {
+                    return Some(cx.goto(ActionId::IN_QUICKSAND, 0));
+                }
+            } else if cx.state.action != ActionId::QUICKSAND_JUMP_LAND {
+                cx.state.quicksand_depth = 0.0;
             }
             cx.state.floor_y = Some(f.y);
             cx.state.floor_kind = surface_kind_index(f.kind);
@@ -61,6 +88,25 @@ fn ground_prelude(cx: &mut ActionCx) -> Option<ActionResult> {
         }
         None => Some(cx.goto(ActionId::FREEFALL, 0)),
     }
+}
+
+/// Actions that sink at the moving rate (0.25/frame) in quicksand;
+/// everything else sinks at the stationary rate (0.5/frame).
+fn is_moving_action(action: ActionId) -> bool {
+    matches!(
+        action,
+        ActionId::WALKING
+            | ActionId::TURNING_AROUND
+            | ActionId::FINISH_TURNING_AROUND
+            | ActionId::BRAKING
+            | ActionId::DECELERATING
+            | ActionId::CRAWL
+            | ActionId::BUTT_SLIDE
+            | ActionId::STOMACH_SLIDE
+            | ActionId::DIVE_SLIDE
+            | ActionId::CROUCH_SLIDE
+            | ActionId::SLIDE_KICK_SLIDE
+    )
 }
 
 pub(crate) fn surface_kind_index(kind: SurfaceKind) -> u8 {
@@ -102,7 +148,7 @@ fn slope_speed_delta(cx: &ActionCx) -> f32 {
     let (fx, fz) = cx.forward_xz();
     let along = fx * f.normal.x + fz * f.normal.z;
     let sign = if along >= 0.0 { 1.0 } else { -1.0 };
-    cx.params.slope_accel(f.kind) * steep * sign
+    cx.params.slope_accel(SurfaceClass::of(f.kind)) * steep * sign
 }
 
 /// Apply an explicit horizontal velocity through the ground step routine
@@ -188,10 +234,10 @@ fn walk_body(cx: &mut ActionCx) {
 /// if the floor is not very slippery and speed < min(intended, 8),
 /// speed becomes min(intended, 8). (wiki:Walking@19299)
 fn enter_walking(cx: &mut ActionCx) -> ActionResult {
-    let slippery = matches!(
-        cx.world.find_floor(cx.state.pos, 1.0).map(|f| f.kind),
-        Some(SurfaceKind::Slide)
-    );
+    let slippery = cx
+        .world
+        .find_floor(cx.state.pos, 1.0)
+        .is_some_and(|f| SurfaceClass::of(f.kind) == SurfaceClass::VerySlippery);
     if !slippery {
         let clamp = cx
             .intended_magnitude()
@@ -228,6 +274,15 @@ impl ActionHandler for Idle {
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
         if let Some(r) = ground_prelude(cx) {
             return r;
+        }
+        // Dead (health < 0x100): no input response; the character lies
+        // still. Full death warp is out of scope (simplification).
+        if cx.state.health < 0x100 {
+            cx.state.forward_speed = 0.0;
+            cx.state.vel.x = 0.0;
+            cx.state.vel.z = 0.0;
+            cx.timeline.slot = slot::IDLE;
+            return ActionResult::Stay;
         }
         // Cancel checks.
         if cx.pressed(buttons::A, prev_buttons) {
@@ -520,25 +575,44 @@ fn landing_tick(
         }
     }
     // A chains only during the landing itself (the reference keeps a
-    // 5-frame double-jump timer; the landing is 4-6 frames).
+    // 5-frame double-jump timer; the landing is 4-6 frames). While
+    // squished, double/triple chains are suppressed: A gives a single
+    // jump only.
     if cx.pressed(buttons::A, prev_buttons) && cx.state.action_timer < frames {
-        match chain {
-            LandChain::DoubleJump => return enter_double_jump(cx),
-            LandChain::SpeedChain => {
-                if cx.state.forward_speed > 20.0 {
-                    return enter_triple_jump(cx);
+        if cx.state.squish_timer > 0 {
+            match chain {
+                LandChain::DoubleJump | LandChain::SpeedChain => return enter_jump(cx),
+                LandChain::Suppressed => {}
+                LandChain::BackflipHeldZ => {
+                    if cx.input.buttons & buttons::Z != 0 {
+                        return enter_backflip(cx);
+                    }
                 }
-                return enter_jump(cx);
-            }
-            LandChain::Suppressed => {}
-            LandChain::BackflipHeldZ => {
-                if cx.input.buttons & buttons::Z != 0 {
-                    return enter_backflip(cx);
+                LandChain::LongJumpHeldZ => {
+                    if cx.input.buttons & buttons::Z != 0 {
+                        return enter_long_jump(cx);
+                    }
                 }
             }
-            LandChain::LongJumpHeldZ => {
-                if cx.input.buttons & buttons::Z != 0 {
-                    return enter_long_jump(cx);
+        } else {
+            match chain {
+                LandChain::DoubleJump => return enter_double_jump(cx),
+                LandChain::SpeedChain => {
+                    if cx.state.forward_speed > 20.0 {
+                        return enter_triple_jump(cx);
+                    }
+                    return enter_jump(cx);
+                }
+                LandChain::Suppressed => {}
+                LandChain::BackflipHeldZ => {
+                    if cx.input.buttons & buttons::Z != 0 {
+                        return enter_backflip(cx);
+                    }
+                }
+                LandChain::LongJumpHeldZ => {
+                    if cx.input.buttons & buttons::Z != 0 {
+                        return enter_long_jump(cx);
+                    }
                 }
             }
         }
@@ -714,14 +788,37 @@ pub fn begin_sliding(cx: &mut ActionCx) -> ActionResult {
     }
 }
 
-/// Slide check for non-slide ground actions: Slide-kind floor -> the
+/// The slide trigger: slide-terrain (SurfaceKind::Slide) always slides;
+/// otherwise the floor must be slippery for its slipperiness class AND the
+/// character faces downhill or moves backward (forward_speed <= -1).
+/// (decomp-derived slide trigger)
+fn slide_trigger_active(cx: &mut ActionCx) -> bool {
+    let Some(f) = cx.world.find_floor(cx.state.pos, 1.0) else {
+        return false;
+    };
+    if f.kind == SurfaceKind::Slide {
+        return true;
+    }
+    let class = SurfaceClass::of(f.kind);
+    if f.normal.y > class.slippery_floor_y() {
+        return false;
+    }
+    // Facing downhill: within 0x4000 (90 deg) of the downhill yaw (the
+    // floor normal's horizontal projection points downhill).
+    let steep = (f.normal.x * f.normal.x + f.normal.z * f.normal.z).sqrt();
+    let facing_downhill = if steep > 1e-4 {
+        let downhill_yaw = crate::trig::atan2(f.normal.x, f.normal.z);
+        cx.state.face_yaw.diff_to(downhill_yaw).abs() <= 0x4000
+    } else {
+        false
+    };
+    facing_downhill || cx.state.forward_speed <= -1.0
+}
+
+/// Slide check for non-slide ground actions: the trigger routes to the
 /// begin-sliding dispatcher.
 fn check_slide(cx: &mut ActionCx) -> Option<ActionResult> {
-    if cx
-        .world
-        .find_floor(cx.state.pos, 1.0)
-        .is_some_and(|f| f.kind == SurfaceKind::Slide)
-    {
+    if slide_trigger_active(cx) {
         return Some(begin_sliding(cx));
     }
     None
@@ -772,74 +869,94 @@ fn enter_crouch_slide(cx: &mut ActionCx) -> ActionResult {
     cx.goto(ActionId::CROUCH_SLIDE, 0)
 }
 
-/// Shared slide-vector physics: downhill accel, input steering of the slide
-/// direction, friction, 48 cap. Writes vel from the slide vector (not from
-/// facing) and sets forward_speed to the facing projection for
-/// compatibility. Returns the slide speed after the update.
+/// Shared slide-vector physics (the reference `update_sliding` model,
+/// reimplemented on the slide vector rather than the facing): per-class
+/// downhill acceleration, stick steering of the slide *velocity* (sideways)
+/// with the decay modulated by the stick's forward component, the 100-unit
+/// speed cap applied one frame late, and backwards-slide negation when the
+/// facing is more than 0x4000 from the slide direction. Writes vel from the
+/// slide vector (not from facing) and sets forward_speed to the facing
+/// projection for compatibility. Returns the slide speed after the update.
 fn update_slide_vector(cx: &mut ActionCx) -> f32 {
-    let n = cx
-        .world
-        .find_floor(cx.state.pos, 1.0)
-        .map(|f| f.normal)
-        .unwrap_or(glam::Vec3::Y);
+    let floor = cx.world.find_floor(cx.state.pos, 1.0);
+    let n = floor.map(|f| f.normal).unwrap_or(glam::Vec3::Y);
+    let class = floor
+        .map(|f| SurfaceClass::of(f.kind))
+        .unwrap_or(SurfaceClass::Default);
     let steep = (n.x * n.x + n.z * n.z).sqrt();
-    // Downhill direction (xz): the normal's horizontal projection.
-    let mut dh = (n.x, n.z);
-    let dh_len = (dh.0 * dh.0 + dh.1 * dh.1).sqrt();
-    if dh_len > 1e-4 {
-        dh.0 /= dh_len;
-        dh.1 /= dh_len;
-    }
-    // Slope accelerates the slide vector downhill.
+    // Slope accelerates the slide vector downhill, per class.
     if steep > 0.02 {
-        let accel = cx.params.slide_downhill_accel * steep;
-        cx.state.slide_vel_x += dh.0 * accel;
-        cx.state.slide_vel_z += dh.1 * accel;
+        let accel = class.slide_accel() * steep;
+        let inv = 1.0 / steep;
+        cx.state.slide_vel_x += n.x * inv * accel;
+        cx.state.slide_vel_z += n.z * inv * accel;
     }
-    // Input steers the slide vector (rotates, does not replace).
-    if let Some(iy) = cx.intended_yaw() {
-        let mag = cx.intended_magnitude() / 32.0;
-        let yaw_rad = iy.0 as f32 / 65536.0 * std::f32::consts::TAU;
-        let (ifx, ifz) = (yaw_rad.sin(), yaw_rad.cos());
-        // Blend slide direction toward input (5% per frame, scaled by mag).
-        let blend = 0.05 * mag;
-        let cur_len = (cx.state.slide_vel_x * cx.state.slide_vel_x
-            + cx.state.slide_vel_z * cx.state.slide_vel_z)
-            .sqrt()
-            .max(0.01);
-        let cur_dx = cx.state.slide_vel_x / cur_len;
-        let cur_dz = cx.state.slide_vel_z / cur_len;
-        let new_dx = cur_dx + (ifx - cur_dx) * blend;
-        let new_dz = cur_dz + (ifz - cur_dz) * blend;
-        let new_len = (new_dx * new_dx + new_dz * new_dz).sqrt().max(0.01);
-        cx.state.slide_vel_x = new_dx / new_len * cur_len;
-        cx.state.slide_vel_z = new_dz / new_len * cur_len;
-        // Face turns toward input independently.
-        cx.state.face_yaw = cx.state.face_yaw.approach(iy, 0x400);
-    } else if dh_len > 1e-4 {
-        let dh_yaw = crate::trig::atan2(dh.0, dh.1);
-        cx.state.face_yaw = cx.state.face_yaw.approach(dh_yaw, 0x400);
-    }
-    // Friction.
-    let speed = (cx.state.slide_vel_x * cx.state.slide_vel_x
+    let mut speed = (cx.state.slide_vel_x * cx.state.slide_vel_x
         + cx.state.slide_vel_z * cx.state.slide_vel_z)
         .sqrt();
-    if speed > 0.01 {
-        let friction = 0.98; // (verify)
-        cx.state.slide_vel_x *= friction;
-        cx.state.slide_vel_z *= friction;
+    if let Some(iy) = cx.intended_yaw() {
+        let mag = cx.intended_magnitude() / 32.0;
+        if speed > 0.01 && mag > 0.01 {
+            // Steer the slide velocity sideways toward the intended yaw.
+            let slide_yaw = crate::trig::atan2(cx.state.slide_vel_x, cx.state.slide_vel_z);
+            let rate = (0x400 as f32 * mag) as u16;
+            let new_yaw = slide_yaw.approach(iy, rate);
+            let (s, c) = (crate::trig::sin(new_yaw), crate::trig::cos(new_yaw));
+            cx.state.slide_vel_x = s * speed;
+            cx.state.slide_vel_z = c * speed;
+            // Forward/back stick modulates the decay: pushing along the
+            // slide direction loosens it, pulling back tightens it.
+            let dyaw_rad = iy.diff_to(slide_yaw) as f32 / 65536.0 * std::f32::consts::TAU;
+            let loss = class.slide_loss() + mag * dyaw_rad.cos() * 0.02;
+            cx.state.slide_vel_x *= loss;
+            cx.state.slide_vel_z *= loss;
+        }
+        // Facing turns toward the input independently.
+        cx.state.face_yaw = cx.state.face_yaw.approach(iy, 0x400);
+    } else {
+        // No input: base decay; face downhill.
+        cx.state.slide_vel_x *= class.slide_loss();
+        cx.state.slide_vel_z *= class.slide_loss();
+        if steep > 1e-4 {
+            let dh_yaw = crate::trig::atan2(n.x, n.z);
+            cx.state.face_yaw = cx.state.face_yaw.approach(dh_yaw, 0x400);
+        }
     }
-    let speed = (cx.state.slide_vel_x * cx.state.slide_vel_x
+    speed = (cx.state.slide_vel_x * cx.state.slide_vel_x
         + cx.state.slide_vel_z * cx.state.slide_vel_z)
-        .sqrt()
-        .min(48.0);
-    // Forward speed is projection onto facing (for compatibility).
+        .sqrt();
+    // The 100-unit cap applies one frame late: exceeding it is allowed for
+    // exactly one tick (tracked by the latch), then clamped.
+    if speed > 100.0 {
+        if cx.state.slide_over_cap {
+            let k = 100.0 / speed;
+            cx.state.slide_vel_x *= k;
+            cx.state.slide_vel_z *= k;
+            speed = 100.0;
+            cx.state.slide_over_cap = false;
+        } else {
+            cx.state.slide_over_cap = true;
+        }
+    } else {
+        cx.state.slide_over_cap = false;
+    }
+    // Backwards slide: facing more than 0x4000 from the slide direction
+    // negates the forward component.
     let (fx, fz) = cx.forward_xz();
-    cx.state.forward_speed = cx.state.slide_vel_x * fx + cx.state.slide_vel_z * fz;
+    let mut forward_speed = cx.state.slide_vel_x * fx + cx.state.slide_vel_z * fz;
+    if speed > 0.01 {
+        let slide_yaw = crate::trig::atan2(cx.state.slide_vel_x, cx.state.slide_vel_z);
+        if cx.state.face_yaw.diff_to(slide_yaw).abs() > 0x4000 {
+            forward_speed = -forward_speed;
+        }
+    }
+    cx.state.forward_speed = forward_speed;
     speed
 }
 
-/// Butt slide: sliding on steep/slippery ground. All numbers are (verify).
+/// Butt slide: sliding on steep/slippery ground. The slide persists until
+/// the speed drops below the 4.0 stop speed (the reference `update_sliding`
+/// model stops slides by speed, not by re-checking the floor each frame).
 pub struct ButtSlide;
 impl ActionHandler for ButtSlide {
     fn name(&self) -> &'static str {
@@ -852,20 +969,8 @@ impl ActionHandler for ButtSlide {
         if cx.pressed(buttons::A, prev_buttons) {
             return enter_jump(cx); // (verify)
         }
-        let on_slide = cx
-            .world
-            .find_floor(cx.state.pos, 1.0)
-            .is_some_and(|f| f.kind == SurfaceKind::Slide);
-        if !on_slide {
-            // Left the slide: walk or decel out.
-            if cx.input.stick_held() {
-                return enter_walking(cx);
-            }
-            cx.timeline.slot = slot::DECEL;
-            return cx.goto(ActionId::DECELERATING, 0);
-        }
         let speed = update_slide_vector(cx);
-        if speed < 2.0 {
+        if speed < 4.0 {
             if cx.input.stick_held() {
                 return enter_walking(cx);
             }
@@ -1008,6 +1113,66 @@ impl ActionHandler for SlideKickSlide {
             return cx.goto(ActionId::CROUCH, 0);
         }
         cx.timeline.slot = slot::SLIDE_KICK_SLIDE;
+        ActionResult::Stay
+    }
+}
+
+/// Waist-deep in quicksand (depth > 30; v1's shallow cap of 10 keeps this
+/// reachable only via deep quicksand or direct state setup). Can still
+/// jump (A/B; B becomes the punch in Phase E) and crouch (Z). Depth below
+/// 30 exits back to idle.
+pub struct InQuicksand;
+impl ActionHandler for InQuicksand {
+    fn name(&self) -> &'static str {
+        "InQuicksand"
+    }
+    fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
+        if let Some(r) = ground_prelude(cx) {
+            return r;
+        }
+        if cx.state.quicksand_depth < 30.0 {
+            cx.timeline.slot = slot::IDLE;
+            return cx.goto(ActionId::IDLE, 0);
+        }
+        if cx.pressed(buttons::A, prev_buttons) || cx.pressed(buttons::B, prev_buttons) {
+            return enter_jump(cx);
+        }
+        if cx.pressed(buttons::Z, prev_buttons) {
+            return enter_crouch(cx);
+        }
+        // Waist-deep: stuck in place.
+        cx.state.forward_speed = 0.0;
+        cx.state.vel.x = 0.0;
+        cx.state.vel.z = 0.0;
+        cx.timeline.slot = slot::CROUCH;
+        ActionResult::Stay
+    }
+}
+
+/// Landing while deep in quicksand (depth >= 11): a 13-frame escape
+/// sequence. Frames 1-6 drain the depth by (7-t)*0.8/frame (floored at
+/// 1.1); horizontal speed approaches 0 at 0.95/frame; then idle.
+/// (v1 ends at IDLE; the reference ends at JUMP_LAND_STOP.)
+pub struct QuicksandJumpLand;
+impl ActionHandler for QuicksandJumpLand {
+    fn name(&self) -> &'static str {
+        "QuicksandJumpLand"
+    }
+    fn tick(&self, cx: &mut ActionCx, _prev_buttons: u16) -> ActionResult {
+        if let Some(r) = ground_prelude(cx) {
+            return r;
+        }
+        let t = cx.state.action_timer;
+        if (1..=6).contains(&t) {
+            cx.state.quicksand_depth = (cx.state.quicksand_depth - (7 - t) as f32 * 0.8).max(1.1);
+        }
+        cx.state.forward_speed = approach_zero(cx.state.forward_speed, 0.95);
+        apply_ground_move(cx);
+        if t >= 13 {
+            cx.timeline.slot = slot::IDLE;
+            return cx.goto(ActionId::IDLE, 0);
+        }
+        cx.timeline.slot = slot::LAND;
         ActionResult::Stay
     }
 }

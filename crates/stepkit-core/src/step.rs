@@ -47,6 +47,8 @@ pub fn tick(
     // action_timer counts completed ticks in this action.
     state.action_timer = state.action_timer.wrapping_add(1);
     state.warped = false;
+    // Squish wears off one frame at a time, in every action.
+    state.squish_timer = state.squish_timer.saturating_sub(1);
 
     let mut cx = ActionCx {
         state,

@@ -17,6 +17,8 @@ pub enum Event {
     Jumped { velocity_y: f32 },
     /// Grabbed a ledge.
     LedgeGrab,
+    /// Took fall damage; carries the damage amount.
+    Damaged { amount: i32 },
 }
 
 #[cfg(test)]

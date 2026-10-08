@@ -38,6 +38,8 @@ pub fn enter_water_plunge(cx: &mut ActionCx, surface_y: f32) -> ActionResult {
     cx.state.vel.y /= 2.0;
     cx.state.pos.y = surface_y - 100.0;
     cx.state.forward_speed /= 4.0;
+    // The fall is over; a later water exit must not inherit this peak.
+    cx.state.peak_height = 0.0;
     cx.goto(id::WATER_PLUNGE, 0)
 }
 

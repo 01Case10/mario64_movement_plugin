@@ -149,6 +149,21 @@ impl ActionId {
     /// Slide-kick slide: ground continuation of an airborne slide kick.
     /// spec: actions.slide_kick_slide (verified: decomp ACT_SLIDE_KICK_SLIDE)
     pub const SLIDE_KICK_SLIDE: ActionId = ActionId(0x0080045A);
+    /// Waist-deep in quicksand: can still jump and crouch.
+    /// spec: actions.in_quicksand (verified: decomp ACT_IN_QUICKSAND)
+    pub const IN_QUICKSAND: ActionId = ActionId(0x0002020D);
+    /// Landing from a jump while deep in quicksand: 13-frame escape.
+    /// spec: actions.quicksand_jump_land (verified: decomp ACT_QUICKSAND_JUMP_LAND)
+    pub const QUICKSAND_JUMP_LAND: ActionId = ActionId(0x04000476);
+    /// Fast ledge pull-up (A with headroom).
+    /// spec: actions.ledge_climb_fast (verified: decomp ACT_LEDGE_CLIMB_FAST)
+    pub const LEDGE_CLIMB_FAST: ActionId = ActionId(0x0000054F);
+    /// Slow ledge climb, part 1 (stick toward the wall).
+    /// spec: actions.ledge_climb_slow_1 (verified: decomp ACT_LEDGE_CLIMB_SLOW_1)
+    pub const LEDGE_CLIMB_SLOW_1: ActionId = ActionId(0x0000054C);
+    /// Slow ledge climb, part 2.
+    /// spec: actions.ledge_climb_slow_2 (verified: decomp ACT_LEDGE_CLIMB_SLOW_2)
+    pub const LEDGE_CLIMB_SLOW_2: ActionId = ActionId(0x0000054D);
 
     /// Custom action IDs start here; the registry enforces the range.
     pub const CUSTOM_BASE: u32 = 0x0100_0000;
@@ -210,6 +225,23 @@ pub struct CharacterState {
     /// Downward speed at the last landing (from the landing goto arg).
     /// Consumed by fall-damage/squish logic.
     pub last_fall_speed: f32,
+    /// Health. Full is 0x880 (2176); death below 0x100.
+    /// spec: damage.health_full
+    pub health: i32,
+    /// Frames of squish remaining (0 = not squished). While > 0 the
+    /// intended stick magnitude is quartered, jump velocity halved, and
+    /// double/triple jump chains are suppressed.
+    pub squish_timer: u32,
+    /// Highest Y reached during the current airtime; fall damage compares
+    /// it against the landing height. Reset on landing and by ground
+    /// actions.
+    pub peak_height: f32,
+    /// Quicksand sink depth. Grows while standing on quicksand, resets to
+    /// 0 on other floors.
+    pub quicksand_depth: f32,
+    /// Slide speed-cap latch: the 100-unit cap applies one frame late, so
+    /// a slide may exceed it for exactly one tick.
+    pub slide_over_cap: bool,
     /// Gravity direction. Fixed to +Y in v1 (see open decision 7); stored so
     /// planetary gravity can be added later without rewriting every action.
     pub up: Vec3,
@@ -241,6 +273,11 @@ impl Default for CharacterState {
             wall_normal: Vec3::X,
             land_from: ActionId::IDLE,
             last_fall_speed: 0.0,
+            health: 0x880, // full health (verified: decomp health model)
+            squish_timer: 0,
+            peak_height: 0.0,
+            quicksand_depth: 0.0,
+            slide_over_cap: false,
             up: Vec3::Y,
             warped: false,
         }
@@ -275,9 +312,15 @@ impl CharacterState {
         self.wall_hit.hash(&mut h);
         self.wall_kick_timer.hash(&mut h);
         self.wall_normal.x.to_bits().hash(&mut h);
+        self.wall_normal.y.to_bits().hash(&mut h);
         self.wall_normal.z.to_bits().hash(&mut h);
         self.land_from.0.hash(&mut h);
         self.last_fall_speed.to_bits().hash(&mut h);
+        self.health.hash(&mut h);
+        self.squish_timer.hash(&mut h);
+        self.peak_height.to_bits().hash(&mut h);
+        self.quicksand_depth.to_bits().hash(&mut h);
+        self.slide_over_cap.hash(&mut h);
         h.finish()
     }
 }

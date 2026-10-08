@@ -109,14 +109,15 @@ impl Default for MovementParams {
 }
 
 impl MovementParams {
-    /// Slope acceleration for a surface kind.
-    pub fn slope_accel(&self, kind: crate::world::SurfaceKind) -> f32 {
-        use crate::world::SurfaceKind::*;
-        match kind {
+    /// Slope acceleration for a slipperiness class.
+    /// spec: slope.accel_default / slippery / very_slippery / not_slippery
+    pub fn slope_accel(&self, class: crate::world::SurfaceClass) -> f32 {
+        use crate::world::SurfaceClass::*;
+        match class {
             Default => self.slope_accel_default,
-            Slide => self.slope_accel_slippery,
-            Quicksand => self.slope_accel_not_slippery,
-            Custom(_) => self.slope_accel_default,
+            Slippery => self.slope_accel_slippery,
+            VerySlippery => self.slope_accel_very_slippery,
+            NotSlippery => self.slope_accel_not_slippery,
         }
     }
 
