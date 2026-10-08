@@ -1,0 +1,248 @@
+# StepKit animation timing manifest (phase 6).
+# Original timing authored for the stepkit reference mannequin; not derived
+# from any commercial game. 30 fps gameplay clock.
+# See crates/stepkit-anim/src/manifest.rs for the schema.
+
+fps = 30
+
+[tolerances]
+event_frame_tolerance = 1
+in_place_travel = 2.0
+transition_pop_degrees = 8.0
+
+[[slots]]
+id = "idle"
+frames = 60
+mode = "Loop"
+speed = { Fixed = 1.0 }
+root = "InPlace"
+events = []
+contacts = []
+
+[[slots]]
+id = "walk_cycle"
+frames = 24
+mode = "Loop"
+speed = { ScaledByForwardSpeed = { base = 0.6, per_unit = 0.02, min = 0.6, max = 1.6 } }
+root = "InPlace"
+events = [
+  { name = "footstep_l", frame = 0 },
+  { name = "footstep_r", frame = 12 },
+]
+contacts = [
+  { bone = "foot_l", start_frame = 0, end_frame = 10 },
+  { bone = "foot_r", start_frame = 12, end_frame = 22 },
+]
+
+[[slots]]
+id = "turn_around"
+frames = 18
+mode = "Once"
+speed = { Fixed = 1.0 }
+root = "InPlace"
+events = [
+  { name = "footstep_l", frame = 4 },
+  { name = "footstep_r", frame = 12 },
+]
+contacts = []
+
+[[slots]]
+id = "brake"
+frames = 20
+mode = "Once"
+speed = { Fixed = 1.0 }
+root = "InPlace"
+events = [
+  { name = "skid", frame = 2 },
+]
+contacts = []
+
+[[slots]]
+id = "decelerate"
+frames = 24
+mode = "Loop"
+speed = { Fixed = 1.0 }
+root = "InPlace"
+events = []
+contacts = []
+
+[[slots]]
+id = "land"
+frames = 12
+mode = "Once"
+speed = { Fixed = 1.0 }
+root = "InPlace"
+events = [
+  { name = "land", frame = 0 },
+]
+contacts = [
+  { bone = "foot_l", start_frame = 0, end_frame = 11 },
+  { bone = "foot_r", start_frame = 0, end_frame = 11 },
+]
+
+[[slots]]
+id = "jump"
+frames = 16
+mode = "Once"
+speed = { Fixed = 1.0 }
+root = "InPlace"
+events = [
+  { name = "takeoff", frame = 2 },
+]
+contacts = []
+
+[[slots]]
+id = "freefall"
+frames = 20
+mode = "Loop"
+speed = { Fixed = 1.0 }
+root = "InPlace"
+events = []
+contacts = []
+
+[[slots]]
+id = "double_jump"
+frames = 18
+mode = "Once"
+speed = { Fixed = 1.0 }
+root = "InPlace"
+events = [
+  { name = "takeoff", frame = 2 },
+]
+contacts = []
+
+[[slots]]
+id = "triple_jump"
+frames = 22
+mode = "Once"
+speed = { Fixed = 1.0 }
+root = "InPlace"
+events = [
+  { name = "takeoff", frame = 2 },
+  { name = "flip_apex", frame = 11 },
+]
+contacts = []
+
+[[slots]]
+id = "backflip"
+frames = 24
+mode = "Once"
+speed = { Fixed = 1.0 }
+root = "InPlace"
+events = [
+  { name = "takeoff", frame = 2 },
+  { name = "flip_apex", frame = 12 },
+]
+contacts = []
+
+[[slots]]
+id = "side_flip"
+frames = 24
+mode = "Once"
+speed = { Fixed = 1.0 }
+root = "InPlace"
+events = [
+  { name = "takeoff", frame = 2 },
+  { name = "flip_apex", frame = 12 },
+]
+contacts = []
+
+[[slots]]
+id = "long_jump"
+frames = 20
+mode = "Once"
+speed = { Fixed = 1.0 }
+root = "InPlace"
+events = [
+  { name = "takeoff", frame = 2 },
+]
+contacts = []
+
+[[slots]]
+id = "dive"
+frames = 24
+mode = "Once"
+speed = { Fixed = 1.0 }
+root = "InPlace"
+events = [
+  { name = "takeoff", frame = 2 },
+]
+contacts = []
+
+[[slots]]
+id = "ground_pound"
+frames = 30
+mode = "Once"
+speed = { Fixed = 1.0 }
+root = "InPlace"
+events = [
+  { name = "hover_start", frame = 4 },
+  { name = "slam", frame = 16 },
+  { name = "land", frame = 18 },
+]
+contacts = []
+
+[[slots]]
+id = "crouch"
+frames = 12
+mode = "Once"
+speed = { Fixed = 1.0 }
+root = "InPlace"
+events = []
+contacts = [
+  { bone = "foot_l", start_frame = 0, end_frame = 11 },
+  { bone = "foot_r", start_frame = 0, end_frame = 11 },
+]
+
+[[slots]]
+id = "crawl"
+frames = 20
+mode = "Loop"
+speed = { ScaledByForwardSpeed = { base = 0.6, per_unit = 0.03, min = 0.6, max = 1.4 } }
+root = "InPlace"
+events = [
+  { name = "footstep_l", frame = 0 },
+  { name = "footstep_r", frame = 10 },
+]
+contacts = []
+
+[[slots]]
+id = "wall_kick"
+frames = 18
+mode = "Once"
+speed = { Fixed = 1.0 }
+root = "InPlace"
+events = [
+  { name = "takeoff", frame = 2 },
+]
+contacts = []
+
+[[slots]]
+id = "ledge_grab"
+frames = 30
+mode = "Once"
+speed = { Fixed = 1.0 }
+root = "InPlace"
+events = [
+  { name = "grab", frame = 0 },
+  { name = "climb", frame = 20 },
+]
+contacts = []
+
+[[slots]]
+id = "butt_slide"
+frames = 16
+mode = "Loop"
+speed = { Fixed = 1.0 }
+root = "InPlace"
+events = []
+contacts = []
+
+[[slots]]
+id = "air_knockback"
+frames = 20
+mode = "Once"
+speed = { Fixed = 1.0 }
+root = "InPlace"
+events = []
+contacts = []

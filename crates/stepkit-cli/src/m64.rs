@@ -113,6 +113,7 @@ pub fn samples_to_scenario(
     Scenario {
         id: id.into(),
         tags: vec!["replay".into(), "m64".into()],
+        water: vec![],
         geometry: vec![stepkit_trace::scenario::Geometry::Box(
             stepkit_trace::scenario::BoxGeom {
                 min: (-2000.0, -100.0, -2000.0),

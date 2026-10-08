@@ -7,6 +7,7 @@
 
 pub mod air;
 pub mod ground;
+pub mod water;
 
 use crate::angles::Angle;
 use crate::events::Event;
@@ -106,7 +107,21 @@ impl ActionRegistry {
         r.register_builtin(ActionId::DECELERATING, ground::Decelerating);
         r.register_builtin(ActionId::LANDING, ground::Landing);
         r.register_builtin(ActionId::JUMP, air::SingleJump);
+        r.register_builtin(ActionId::DOUBLE_JUMP, air::DoubleJump);
+        r.register_builtin(ActionId::TRIPLE_JUMP, air::TripleJump);
+        r.register_builtin(ActionId::BACKFLIP, air::Backflip);
+        r.register_builtin(ActionId::SIDE_FLIP, air::SideFlip);
+        r.register_builtin(ActionId::LONG_JUMP, air::LongJump);
+        r.register_builtin(ActionId::DIVE, air::Dive);
+        r.register_builtin(ActionId::GROUND_POUND, air::GroundPound);
+        r.register_builtin(ActionId::WALL_KICK, air::WallKick);
+        r.register_builtin(ActionId::LEDGE_GRAB, air::LedgeGrab);
+        r.register_builtin(ActionId::AIR_KNOCKBACK, air::AirKnockback);
         r.register_builtin(ActionId::FREEFALL, air::Freefall);
+        r.register_builtin(ActionId::CROUCH, ground::Crouch);
+        r.register_builtin(ActionId::CRAWL, ground::Crawl);
+        r.register_builtin(water::id::WATER_PLUNGE, water::WaterPlunge);
+        r.register_builtin(water::id::SWIMMING, water::Swimming);
         r
     }
 

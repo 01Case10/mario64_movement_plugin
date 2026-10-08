@@ -1,0 +1,29 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/stepkit-core",
+    "crates/stepkit-anim",
+    "crates/stepkit-trace",
+    "crates/stepkit-godot",
+    "crates/stepkit-cli",
+]
+
+[workspace.package]
+edition = "2021"
+version = "0.1.0"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/01Case10/mario64_movement_plugin"
+rust-version = "1.80"
+
+[workspace.dependencies]
+glam = "0.30"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ron = "0.8"
+toml = "0.8"
+csv = "1"
+clap = { version = "4", features = ["derive"] }
+godot = "0.5"
+stepkit-core = { path = "crates/stepkit-core", version = "0.1.0" }
+stepkit-anim = { path = "crates/stepkit-anim", version = "0.1.0" }
+stepkit-trace = { path = "crates/stepkit-trace", version = "0.1.0" }

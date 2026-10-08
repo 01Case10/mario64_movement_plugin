@@ -9,6 +9,7 @@
 //! * `anim generate`   - generate the reference mannequin and clips
 //! * `anim retime`     - resample a clip to the manifest grid
 
+mod anim_cmd;
 mod m64;
 mod trace_cmd;
 
@@ -103,6 +104,14 @@ enum AnimCommands {
         #[arg(long)]
         out: String,
     },
+    Validate {
+        #[arg(long)]
+        manifest: String,
+        #[arg(long)]
+        clips: String,
+        #[arg(long)]
+        bone_map: Option<String>,
+    },
 }
 
 fn run() -> Result<i32, String> {
@@ -145,7 +154,21 @@ fn run() -> Result<i32, String> {
                 Ok(0)
             }
         },
-        Commands::Anim { .. } => Err("stepkit anim: not yet implemented (phase 6)".into()),
+        Commands::Anim { command } => match command {
+            AnimCommands::Generate { manifest, out } => {
+                anim_cmd::generate_reference(&manifest, &out)?;
+                Ok(0)
+            }
+            AnimCommands::Retime { .. } => Err("stepkit anim retime: not yet implemented".into()),
+            AnimCommands::Validate {
+                manifest,
+                clips,
+                bone_map,
+            } => {
+                anim_cmd::validate(&manifest, &clips, bone_map.as_deref())?;
+                Ok(0)
+            }
+        },
     }
 }
 
