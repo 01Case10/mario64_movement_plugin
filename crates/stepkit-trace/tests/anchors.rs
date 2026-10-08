@@ -73,6 +73,7 @@ fn walk_scenario(frames: u32, stick: (i8, i8)) -> Scenario {
             buttons: 0,
         }],
         compare: CompareProfile::GroundDefault,
+        asserts: vec![],
     }
 }
 
