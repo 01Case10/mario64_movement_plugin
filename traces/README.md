@@ -20,8 +20,12 @@ Phase 1 delivered the machinery; the core is still a stub, so:
   (run -> CSV -> diff) in both free-running and teacher-forced modes
   (40/40 checks pass; the diff was also verified to catch an injected
   divergence).
-- Golden traces in `golden/` will be recorded from the Phase 2+ core and
-  reviewed before commit. Nothing regenerates automatically.
+- `golden/` holds 20 numeric traces recorded from the Phase 2 core via
+  `tools/regen-golden` (reviewed before commit). They are self-consistency
+  baselines: all 20 scenarios pass `trace diff` in free-running and
+  teacher-forced modes (40/40). Cross-checking against an independent oracle
+  awaits the private oracle runner (Phase 1's open item).
+- Nothing regenerates automatically.
 - The private oracle runner (needs your ROM + libsm64 build) lives outside
   this repo under `oracle/` (gitignored). Only scenario definitions and
   numeric traces cross into the repo.

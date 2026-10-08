@@ -1,0 +1,12 @@
+#!/bin/sh
+# Regenerate golden traces from the current core. ONLY run this explicitly;
+# review the resulting diff and add a note to spec/provenance before commit.
+# Nothing regenerates automatically.
+set -e
+cd "$(dirname "$0")/.."
+cargo build -p stepkit-cli 2>/dev/null
+for s in traces/scenarios/*.ron; do
+  id=$(basename "$s" .ron)
+  ./target/debug/stepkit trace run --scenario "$s" --out "traces/golden/$id.csv"
+done
+echo "regenerated $(ls traces/golden/*.csv | wc -l) golden traces"

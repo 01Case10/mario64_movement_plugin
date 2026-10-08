@@ -1,0 +1,19 @@
+[gd_scene load_steps=2 format=3 uid="uid://stepkitdock1"]
+
+[node name="StepKitAnim" type="VBoxContainer"]
+
+[node name="Title" type="Label" parent="."]
+text = "StepKit Anim Validator"
+
+[node name="ManifestPath" type="LineEdit" parent="."]
+text = "res://../anim/timing_manifest.toml"
+
+[node name="ClipsPath" type="LineEdit" parent="."]
+text = "res://../anim/reference_clips"
+
+[node name="ValidateButton" type="Button" parent="."]
+text = "Validate"
+
+[node name="Output" type="TextEdit" parent="."]
+custom_minimum_size = Vector2(300, 400)
+editable = false

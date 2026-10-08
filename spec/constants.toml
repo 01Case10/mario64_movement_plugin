@@ -1,0 +1,888 @@
+# Every constant that shapes behavior, each with a provenance entry.
+# A build step (tools/check-provenance.py, run in CI) refuses to compile a
+# constant that has no entry here, so nothing enters the code from memory.
+#
+# Confidence levels: low = working assumption marked (verify) in specs;
+# medium = one independent source; high = two sources agree or a golden
+# scenario passes at tiers A and B.
+
+[meta]
+# Schema version of this file.
+version = 1
+
+# ---------------------------------------------------------------- physics ---
+
+[physics.gravity]
+value = 4.0
+unit = "units per frame^2"
+source = { kind = "wiki", page = "Gravity", revision = "20294", retrieved = "2026-10-07" }
+evidence = ["anchor:gravity_default"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[physics.terminal_velocity]
+value = -75.0
+unit = "units per frame"
+source = { kind = "wiki", page = "Gravity", revision = "20294", retrieved = "2026-10-07" }
+evidence = ["anchor:terminal_velocity_default"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+# --------------------------------------------------------------- locomotion ---
+
+[walk.target_speed_cap]
+value = 32.0
+unit = "units per frame"
+source = { kind = "wiki", page = "Walking", revision = "19299", retrieved = "2026-10-07" }
+evidence = ["anchor:walk_target_speed_default", "l1:anchor_walk_acceleration_curve"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[walk.speedup_base]
+value = 1.1
+unit = "units per frame^2"
+source = { kind = "wiki", page = "Walking", revision = "19299", retrieved = "2026-10-07" }
+evidence = ["anchor:walk_speedup_base", "l1:anchor_walk_acceleration_curve"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[walk.speedup_falloff_divisor]
+value = 43.0
+unit = "dimensionless"
+source = { kind = "wiki", page = "Walking", revision = "19299", retrieved = "2026-10-07" }
+evidence = ["anchor:walk_speedup_falloff_divisor", "l1:anchor_walk_acceleration_curve"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[walk.decel_flat_ground]
+value = 1.0
+unit = "units per frame^2"
+source = { kind = "wiki", page = "Walking", revision = "19299", retrieved = "2026-10-07" }
+evidence = ["anchor:walk_decel_flat_ground", "l1:anchor_walk_acceleration_curve"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[walk.hard_cap]
+value = 48.0
+unit = "units per frame"
+source = { kind = "wiki", page = "Walking", revision = "19299", retrieved = "2026-10-07" }
+evidence = ["anchor:walk_hard_cap", "l1:anchor_walk_acceleration_curve"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[walk.turn_rate]
+value = "0x800"
+unit = "angle units per frame"
+source = { kind = "wiki", page = "Walking", revision = "19299", retrieved = "2026-10-07" }
+evidence = ["anchor:walk_turn_rate", "l1:anchor_walk_turn_rate"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[walk.enter_speed_clamp]
+value = 8.0
+unit = "units per frame"
+source = { kind = "wiki", page = "Walking", revision = "19299", retrieved = "2026-10-07" }
+evidence = ["anchor:walk_enter_speed_clamp", "l1:anchor_walk_acceleration_curve"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[walk.turnaround_speed]
+value = 16.0
+unit = "units per frame"
+source = { kind = "wiki", page = "Walking", revision = "19299", retrieved = "2026-10-07" }
+evidence = ["anchor:walk_turnaround_speed"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[walk.brake_speed]
+value = 16.0
+unit = "units per frame"
+source = { kind = "wiki", page = "Walking", revision = "19299", retrieved = "2026-10-07" }
+evidence = ["anchor:walk_brake_speed"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[input.stick_deadzone]
+value = 8.0
+unit = "stick units"
+source = { kind = "assumption", note = "working assumption (verify)" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+# ------------------------------------------------------------------- slopes ---
+
+[slope.accel_default]
+value = 1.7
+unit = "units per frame^2"
+source = { kind = "wiki", page = "Walking", revision = "19299", retrieved = "2026-10-07" }
+evidence = ["anchor:slope_accel_default"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[slope.accel_slippery]
+value = 2.7
+unit = "units per frame^2"
+source = { kind = "wiki", page = "Walking", revision = "19299", retrieved = "2026-10-07" }
+evidence = ["anchor:slope_accel_slippery"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[slope.accel_very_slippery]
+value = 5.3
+unit = "units per frame^2"
+source = { kind = "wiki", page = "Walking", revision = "19299", retrieved = "2026-10-07" }
+evidence = ["anchor:slope_accel_very_slippery"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[slope.accel_not_slippery]
+value = 0.0
+unit = "units per frame^2"
+source = { kind = "wiki", page = "Walking", revision = "19299", retrieved = "2026-10-07" }
+evidence = ["anchor:slope_accel_not_slippery"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+# -------------------------------------------------------------------- jumps ---
+
+[jump.vertical_base]
+value = 42.0
+unit = "units per frame"
+source = { kind = "wiki", page = "Single Jump", revision = "19309", retrieved = "2026-10-07" }
+evidence = ["anchor:jump_vertical_base", "l1:anchor_jump_entry_numbers"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[jump.vertical_forward_factor]
+value = 0.25
+unit = "dimensionless"
+source = { kind = "wiki", page = "Single Jump", revision = "19309", retrieved = "2026-10-07" }
+evidence = ["anchor:jump_vertical_forward_factor", "l1:anchor_jump_entry_numbers"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[jump.forward_retain]
+value = 0.8
+unit = "dimensionless"
+source = { kind = "wiki", page = "Single Jump", revision = "19309", retrieved = "2026-10-07" }
+evidence = ["anchor:jump_forward_retain", "l1:anchor_jump_entry_numbers"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[jump.height_control_threshold]
+value = 20.0
+unit = "units per frame"
+source = { kind = "wiki", page = "Gravity", revision = "20294", retrieved = "2026-10-07" }
+evidence = ["anchor:jump_height_control_threshold"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+# --------------------------------------------------------------- collision ---
+
+[collision.radius]
+value = 50.0
+unit = "SM64 units"
+source = { kind = "assumption", note = "public docs give the hitbox as radius 50 (verify)" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[collision.height]
+value = 160.0
+unit = "SM64 units"
+source = { kind = "assumption", note = "public docs give the hitbox as height 160 (verify)" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[collision.classify_floor_threshold]
+value = 0.5
+unit = "normal y"
+source = { kind = "assumption", note = "working assumption (verify)" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[collision.classify_ceiling_threshold]
+value = -0.5
+unit = "normal y"
+source = { kind = "assumption", note = "working assumption (verify)" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[step.quarter_steps]
+value = 4
+unit = "sub-steps per frame"
+source = { kind = "wiki", page = "Movement steps", revision = "19723", retrieved = "2026-10-07" }
+evidence = ["anchor:quarter_steps_per_frame"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[step.air_landing_snap_window]
+value = 78.0
+unit = "SM64 units"
+source = { kind = "wiki", page = "Movement steps", revision = "19723", retrieved = "2026-10-07" }
+evidence = ["anchor:air_landing_snap_window"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[step.ceiling_zero_vel_window]
+value = 160.0
+unit = "SM64 units"
+source = { kind = "wiki", page = "Movement steps", revision = "19723", retrieved = "2026-10-07" }
+evidence = ["anchor:air_ceiling_zero_vel_window"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[step.ground_step_up]
+value = 12.0
+unit = "SM64 units"
+source = { kind = "assumption", note = "working assumption (verify)" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[step.ground_step_down]
+value = 24.0
+unit = "SM64 units"
+source = { kind = "assumption", note = "working assumption (verify)" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+# ------------------------------------------------------------------ actions ---
+# Action IDs as published in the community documentation (verify each).
+
+[jump.double_vertical_base]
+value = 52.0
+unit = "units per frame"
+source = { kind = "wiki", page = "Double Jump", revision = "18964", retrieved = "2026-10-07" }
+evidence = ["l1:anchor_double_jump_entry"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[jump.double_vertical_forward_factor]
+value = 0.25
+unit = "dimensionless"
+source = { kind = "wiki", page = "Double Jump", revision = "18964", retrieved = "2026-10-07" }
+evidence = ["l1:anchor_double_jump_entry"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[jump.triple_vertical]
+value = 69.0
+unit = "units per frame"
+source = { kind = "wiki", page = "Triple Jump", revision = "19300", retrieved = "2026-10-07" }
+evidence = ["l1:anchor_triple_jump_entry"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[jump.triple_speed_threshold]
+value = 20.0
+unit = "units per frame"
+source = { kind = "wiki", page = "Triple Jump", revision = "19300", retrieved = "2026-10-07" }
+evidence = ["scenario:jump_chain_triple"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[jump.backflip_forward]
+value = -16.0
+unit = "units per frame"
+source = { kind = "wiki", page = "Backflip", revision = "19307", retrieved = "2026-10-07" }
+evidence = ["l1:anchor_backflip_entry"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[jump.backflip_vertical]
+value = 62.0
+unit = "units per frame"
+source = { kind = "wiki", page = "Backflip", revision = "19307", retrieved = "2026-10-07" }
+evidence = ["l1:anchor_backflip_entry"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[jump.sideflip_vertical]
+value = 62.0
+unit = "units per frame"
+source = { kind = "wiki", page = "Side Flip", revision = "20374", retrieved = "2026-10-07" }
+evidence = ["l1:anchor_side_flip_entry"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[jump.sideflip_forward]
+value = 8.0
+unit = "units per frame"
+source = { kind = "wiki", page = "Side Flip", revision = "20374", retrieved = "2026-10-07" }
+evidence = ["l1:anchor_side_flip_entry"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[jump.longjump_vertical]
+value = 28.0
+unit = "units per frame"
+source = { kind = "assumption", note = "working assumption (verify)" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[jump.longjump_forward_gain]
+value = 18.0
+unit = "units per frame"
+source = { kind = "assumption", note = "working assumption (verify)" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[jump.longjump_entry_speed]
+value = 16.0
+unit = "units per frame"
+source = { kind = "assumption", note = "working assumption (verify)" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[physics.longjump_gravity]
+value = 2.0
+unit = "units per frame^2"
+source = { kind = "wiki", page = "Gravity", revision = "20294", retrieved = "2026-10-07" }
+evidence = ["l1:anchor_long_jump_gravity"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[dive.horizontal_gain]
+value = 15.0
+unit = "units per frame"
+source = { kind = "wiki", page = "Dive", revision = "19303", retrieved = "2026-10-07" }
+evidence = ["anchor:dive_horizontal_gain", "l1:anchor_dive_entry_numbers"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[dive.horizontal_cap]
+value = 48.0
+unit = "units per frame"
+source = { kind = "wiki", page = "Dive", revision = "19303", retrieved = "2026-10-07" }
+evidence = ["l1:anchor_dive_entry_numbers"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[dive.vertical_gain_ground]
+value = 20.0
+unit = "units per frame"
+source = { kind = "wiki", page = "Dive", revision = "19303", retrieved = "2026-10-07" }
+evidence = ["anchor:dive_vertical_gain_ground", "l1:anchor_dive_entry_numbers"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[dive.ground_speed_threshold]
+value = 29.0
+unit = "units per frame"
+source = { kind = "wiki", page = "Dive", revision = "19303", retrieved = "2026-10-07" }
+evidence = ["anchor:dive_ground_speed_threshold"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[dive.ground_stick_threshold]
+value = 48.0
+unit = "stick units"
+source = { kind = "wiki", page = "Dive", revision = "19303", retrieved = "2026-10-07" }
+evidence = ["anchor:dive_ground_stick_threshold"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[dive.air_speed_threshold]
+value = 28.0
+unit = "units per frame"
+source = { kind = "wiki", page = "Dive", revision = "19303", retrieved = "2026-10-07" }
+evidence = ["anchor:dive_air_speed_threshold"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[ground_pound.hover_frames]
+value = 8
+unit = "frames"
+source = { kind = "assumption", note = "working assumption (verify)" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[crawl.target_speed]
+value = 10.0
+unit = "units per frame"
+source = { kind = "assumption", note = "working assumption (verify)" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[crawl.accel]
+value = 2.0
+unit = "units per frame^2"
+source = { kind = "assumption", note = "working assumption (verify)" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[actions.crouch]
+value = "0x40000010"
+unit = "action id"
+source = { kind = "provisional", note = "STEPKIT-PROVISIONAL (bit 30): no community page" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[actions.crawl]
+value = "0x40000011"
+unit = "action id"
+source = { kind = "provisional", note = "STEPKIT-PROVISIONAL (bit 30): no community page" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[actions.ground_pound]
+value = "0x400008A8"
+unit = "action id"
+source = { kind = "provisional", note = "STEPKIT-PROVISIONAL (bit 30): no community page" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[wall.kick_window]
+value = 10
+unit = "frames"
+source = { kind = "assumption", note = "working assumption (verify)" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[wall_kick.vertical]
+value = 52.0
+unit = "units per frame"
+source = { kind = "assumption", note = "working assumption (verify); wiki page unreachable" }
+evidence = ["scenario:wall_kick"]
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[wall_kick.forward]
+value = 20.0
+unit = "units per frame"
+source = { kind = "assumption", note = "working assumption (verify); wiki page unreachable" }
+evidence = ["scenario:wall_kick"]
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[ledge.wall_check_low]
+value = 30.0
+unit = "SM64 units"
+source = { kind = "wiki", page = "Ledge Grab", revision = "19518", retrieved = "2026-10-08" }
+evidence = ["l1:anchor_ledge_grab_conditions"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[ledge.wall_check_high]
+value = 150.0
+unit = "SM64 units"
+source = { kind = "wiki", page = "Ledge Grab", revision = "19518", retrieved = "2026-10-08" }
+evidence = ["l1:anchor_ledge_grab_conditions"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[ledge.search_inward]
+value = 60.0
+unit = "SM64 units"
+source = { kind = "wiki", page = "Ledge Grab", revision = "19518", retrieved = "2026-10-08" }
+evidence = ["l1:anchor_ledge_grab_conditions"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[ledge.search_up]
+value = 160.0
+unit = "SM64 units"
+source = { kind = "wiki", page = "Ledge Grab", revision = "19518", retrieved = "2026-10-08" }
+evidence = ["l1:anchor_ledge_grab_conditions"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[ledge.drop_speed]
+value = -8.0
+unit = "units per frame"
+source = { kind = "wiki", page = "Ledge Grab", revision = "19518", retrieved = "2026-10-08" }
+evidence = []
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[ledge.hang_frames]
+value = 10
+unit = "frames"
+source = { kind = "wiki", page = "Ledge Grab", revision = "19518", retrieved = "2026-10-08" }
+evidence = ["scenario:ledge_grab"]
+confidence = "medium"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[slide.downhill_accel]
+value = 2.5
+unit = "units per frame^2"
+source = { kind = "assumption", note = "working assumption (verify)" }
+evidence = ["scenario:slide"]
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[slide.friction]
+value = 1.0
+unit = "units per frame^2"
+source = { kind = "assumption", note = "working assumption (verify)" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[slide.steer_rate]
+value = "0x400"
+unit = "angle units per frame"
+source = { kind = "assumption", note = "working assumption (verify)" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[slide.min_speed]
+value = 2.0
+unit = "units per frame"
+source = { kind = "assumption", note = "working assumption (verify)" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[knockback.vertical]
+value = 40.0
+unit = "units per frame"
+source = { kind = "assumption", note = "working assumption (verify)" }
+evidence = ["scenario:dive_bonk"]
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[knockback.backward_speed]
+value = -15.0
+unit = "units per frame"
+source = { kind = "assumption", note = "working assumption (verify)" }
+evidence = ["scenario:dive_bonk"]
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[actions.wall_kick]
+value = "0x018808B0"
+unit = "action id"
+source = { kind = "wiki", page = "Wall Kick", revision = "19311", retrieved = "2026-10-07" }
+evidence = ["scenario:wall_kick"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[actions.air_knockback]
+value = "0x400008B1"
+unit = "action id"
+source = { kind = "provisional", note = "STEPKIT-PROVISIONAL (bit 30): no community page" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[actions.butt_slide]
+value = "0x40000447"
+unit = "action id"
+source = { kind = "provisional", note = "STEPKIT-PROVISIONAL (bit 30): no community page" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[water.plunge_depth]
+value = 100.0
+unit = "SM64 units"
+source = { kind = "wiki", page = "Water Plunge", revision = "2023-07-27", retrieved = "2026-10-08" }
+evidence = ["l1:anchor_water_plunge_entry", "scenario:swim"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[actions.water_plunge]
+value = "0x300022E2"
+unit = "action id"
+source = { kind = "wiki", page = "Water Plunge", revision = "2023-07-27", retrieved = "2026-10-08" }
+evidence = ["l1:anchor_water_plunge_entry", "scenario:swim"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[actions.swimming]
+value = "0x40000E3"
+unit = "action id"
+source = { kind = "provisional", note = "STEPKIT-PROVISIONAL (bit 30): no community page found" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-08"
+
+[actions.idle]
+value = "0x0C400201"
+unit = "action id"
+source = { kind = "wiki", page = "Idle", revision = "20401", retrieved = "2026-10-07" }
+evidence = []
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[actions.walking]
+value = "0x40000440"
+unit = "action id"
+source = { kind = "provisional", note = "STEPKIT-PROVISIONAL (bit 30): wiki:Walking lists hex as todo; replaced when documented" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[actions.running]
+value = "0x04000441"
+unit = "action id"
+source = { kind = "assumption", note = "community-documented action index (verify)" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[actions.turning_around]
+value = "0x00000443"
+unit = "action id"
+source = { kind = "wiki", page = "Turning Around", revision = "18182", retrieved = "2026-10-07" }
+evidence = []
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[actions.turning_around.turn_rate]
+value = "0x1000"
+unit = "angle units per frame"
+source = { kind = "assumption", note = "working assumption (verify)" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[actions.braking]
+value = "0x40000444"
+unit = "action id"
+source = { kind = "provisional", note = "STEPKIT-PROVISIONAL (bit 30): no community page" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[actions.braking.decel]
+value = 4.0
+unit = "units per frame^2"
+source = { kind = "assumption", note = "working assumption (verify)" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[actions.decelerating]
+value = "0x40000445"
+unit = "action id"
+source = { kind = "provisional", note = "STEPKIT-PROVISIONAL (bit 30): no community page" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[actions.decelerating.decel]
+value = 0.5
+unit = "units per frame^2"
+source = { kind = "assumption", note = "working assumption (verify)" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[actions.landing]
+value = "0x40000446"
+unit = "action id"
+source = { kind = "provisional", note = "STEPKIT-PROVISIONAL (bit 30): no community page" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[actions.landing.duration_frames]
+value = 4
+unit = "frames"
+source = { kind = "assumption", note = "working assumption (verify)" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[actions.jump]
+value = "0x03000880"
+unit = "action id"
+source = { kind = "wiki", page = "Single Jump", revision = "19309", retrieved = "2026-10-07" }
+evidence = ["l1:anchor_jump_entry_numbers"]
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[actions.double_jump]
+value = "0x03000881"
+unit = "action id"
+source = { kind = "wiki", page = "Double Jump", revision = "18964", retrieved = "2026-10-07" }
+evidence = []
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[actions.triple_jump]
+value = "0x01000882"
+unit = "action id"
+source = { kind = "wiki", page = "Triple Jump", revision = "19300", retrieved = "2026-10-07" }
+evidence = []
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[actions.backflip]
+value = "0x01000883"
+unit = "action id"
+source = { kind = "wiki", page = "Backflip", revision = "19307", retrieved = "2026-10-07" }
+evidence = []
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[actions.side_flip]
+value = "0x01000887"
+unit = "action id"
+source = { kind = "wiki", page = "Side Flip", revision = "20374", retrieved = "2026-10-07" }
+evidence = []
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[actions.long_jump]
+value = "0x03000888"
+unit = "action id"
+source = { kind = "wiki", page = "Long Jump", revision = "14374", retrieved = "2026-10-07" }
+evidence = []
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[actions.dive]
+value = "0x0188088A"
+unit = "action id"
+source = { kind = "wiki", page = "Dive", revision = "19303", retrieved = "2026-10-07" }
+evidence = []
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[actions.freefall]
+value = "0x4000088C"
+unit = "action id"
+source = { kind = "provisional", note = "STEPKIT-PROVISIONAL (bit 30): no community page; 0x01000882 is Triple Jump" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[actions.ledge_grab]
+value = "0x0800034B"
+unit = "action id"
+source = { kind = "wiki", page = "Ledge Grab", revision = "19518", retrieved = "2026-10-07" }
+evidence = []
+confidence = "high"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[air.steer_rate]
+value = "0x800"
+unit = "angle units per frame"
+source = { kind = "assumption", note = "working assumption (verify)" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
+
+[wall.kick_window]
+value = 10
+unit = "frames"
+source = { kind = "assumption", note = "working assumption (verify)" }
+evidence = []
+confidence = "low"
+reviewed_by = "unreviewed"
+date = "2026-10-07"
