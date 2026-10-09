@@ -27,6 +27,9 @@ size = Vector3(10, 1, 35)
 [sub_resource type="BoxMesh" id="wall"]
 size = Vector3(6, 6, 1)
 
+[sub_resource type="BoxMesh" id="wall2"]
+size = Vector3(1, 6, 6)
+
 [sub_resource type="BoxMesh" id="ledge"]
 size = Vector3(6, 0.5, 3)
 
@@ -41,6 +44,12 @@ size = Vector3(4, 0.06, 4)
 
 [sub_resource type="PlaneMesh" id="water_plane"]
 size = Vector2(10, 10)
+
+[sub_resource type="PlaneMesh" id="ground_big"]
+size = Vector2(600, 600)
+
+[sub_resource type="BoxMesh" id="track_vis"]
+size = Vector3(16, 0.04, 240)
 
 [sub_resource type="BoxShape3D" id="col_ground_w"]
 size = Vector3(13, 1, 60)
@@ -57,6 +66,12 @@ size = Vector3(10, 1, 35)
 [sub_resource type="BoxShape3D" id="col_wall"]
 size = Vector3(6, 6, 1)
 
+[sub_resource type="BoxShape3D" id="col_wall2"]
+size = Vector3(1, 6, 6)
+
+[sub_resource type="BoxShape3D" id="col_ground_big"]
+size = Vector3(600, 1, 600)
+
 [sub_resource type="BoxShape3D" id="col_ledge"]
 size = Vector3(6, 0.5, 3)
 
@@ -71,6 +86,9 @@ albedo_color = Color(0.6, 0.35, 0.25, 1)
 
 [sub_resource type="StandardMaterial3D" id="sand_mat"]
 albedo_color = Color(0.76, 0.66, 0.42, 1)
+
+[sub_resource type="StandardMaterial3D" id="track_mat"]
+albedo_color = Color(0.55, 0.32, 0.22, 1)
 
 [sub_resource type="StandardMaterial3D" id="water_mat"]
 albedo_color = Color(0.2, 0.4, 0.8, 0.7)
@@ -126,6 +144,21 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3, 15)
 mesh = SubResource("wall")
 surface_material_override/0 = SubResource("wall_mat")
 
+[node name="Wall2Mesh" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5, 3, 12.5)
+mesh = SubResource("wall2")
+surface_material_override/0 = SubResource("wall_mat")
+
+[node name="GroundBig" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.03, 0)
+mesh = SubResource("ground_big")
+surface_material_override/0 = SubResource("ground_mat")
+
+[node name="TrackMesh" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.02, 0)
+mesh = SubResource("track_vis")
+surface_material_override/0 = SubResource("track_mat")
+
 [node name="LedgeMesh" type="MeshInstance3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 2.5, 10)
 mesh = SubResource("ledge")
@@ -180,6 +213,18 @@ shape = SubResource("col_ground_s")
 [node name="WallShape" type="CollisionShape3D" parent="WallCollider"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3, 15)
 shape = SubResource("col_wall")
+
+[node name="Wall2Collider" type="StaticBody3D" parent="."]
+
+[node name="Wall2Shape" type="CollisionShape3D" parent="Wall2Collider"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5, 3, 12.5)
+shape = SubResource("col_wall2")
+
+[node name="GroundColliderBig" type="StaticBody3D" parent="."]
+
+[node name="GroundBigShape" type="CollisionShape3D" parent="GroundColliderBig"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
+shape = SubResource("col_ground_big")
 
 [node name="LedgeCollider" type="StaticBody3D" parent="."]
 
