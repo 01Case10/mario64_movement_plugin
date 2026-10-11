@@ -366,9 +366,6 @@ impl ActionHandler for BeginSliding {
         "BeginSliding"
     }
     fn tick(&self, cx: &mut ActionCx, _prev_buttons: u16) -> ActionResult {
-        if let Some(r) = moving_prelude(cx) {
-            return r;
-        }
         let id = super::entry::set_mario_action_moving(cx, ActionId::BEGIN_SLIDING);
         cx.goto(id, 0)
     }
@@ -382,9 +379,6 @@ impl ActionHandler for ButtSlide {
         "ButtSlide"
     }
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
-        if let Some(r) = moving_prelude(cx) {
-            return r;
-        }
         let cancel = common_slide_action_with_jump(
             cx,
             prev_buttons,
@@ -406,9 +400,6 @@ impl ActionHandler for StomachSlide {
         "StomachSlide"
     }
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
-        if let Some(r) = moving_prelude(cx) {
-            return r;
-        }
         stomach_slide_action(
             cx,
             prev_buttons,
@@ -428,9 +419,6 @@ impl ActionHandler for DiveSlide {
         "DiveSlide"
     }
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
-        if let Some(r) = moving_prelude(cx) {
-            return r;
-        }
         if cx.state.input & input_flags::ABOVE_SLIDE == 0
             && (cx.pressed(buttons::A, prev_buttons) || cx.pressed(buttons::B, prev_buttons))
         {
@@ -474,9 +462,6 @@ impl ActionHandler for CrouchSlide {
         "CrouchSlide"
     }
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
-        if let Some(r) = moving_prelude(cx) {
-            return r;
-        }
 
         if cx.state.input & input_flags::ABOVE_SLIDE != 0 {
             return cx.goto(ActionId::BUTT_SLIDE, 0);
@@ -536,9 +521,6 @@ impl ActionHandler for SlideKickSlide {
         "SlideKickSlide"
     }
     fn tick(&self, cx: &mut ActionCx, _prev_buttons: u16) -> ActionResult {
-        if let Some(r) = moving_prelude(cx) {
-            return r;
-        }
 
         if cx.pressed(buttons::A, _prev_buttons) {
             // (rumble skipped)
