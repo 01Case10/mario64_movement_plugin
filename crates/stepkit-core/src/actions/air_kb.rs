@@ -43,7 +43,7 @@ use crate::step::{
 fn play_knockback_sound(cx: &mut ActionCx) {
     // decomp: actionArg == 0 && (forwardVel <= -28 || forwardVel >= 28) →
     // DOH, else UH. (Sound selection skipped; flag side effect identical.)
-    sound::play_sound_if_no_flag(&mut cx.state, mario_flags::MARIO_SOUND_PLAYED);
+    sound::play_sound_if_no_flag(&mut cx.state, sound::SoundEvent::Bonk, mario_flags::MARIO_SOUND_PLAYED);
 }
 
 /// decomp: `check_wall_kick` (`src/game/mario_actions_airborne.c:1147`).
@@ -89,12 +89,9 @@ fn common_air_knockback_step(
             // decomp: ENABLE_RUMBLE-guarded queue_rumble_data(5, 40) unless
             // ACT_SOFT_BONK — rumble has no gameplay state; skipped.
             if check_fall_damage_or_get_stuck(cx, hard_fall_action) {
-                // The helper already applied the hard-fall transition
-                // same-tick (decomp: drop_and_set_mario_action returns
-                // TRUE). Re-emit the Goto so the action loop re-runs the new
-                // action this tick — same convention as
-                // air_model::common_air_action_step.
-                return Some(cx.goto(cx.state.action, cx.state.action_arg));
+                // decomp: the TRUE return is DISCARDED by the caller which
+                // returns FALSE, so the hard-fall action starts next tick.
+                return Some(cx.goto_next(cx.state.action, cx.state.action_arg));
             }
             // decomp (US, non-JP): ACT_THROWN_FORWARD/BACKWARD land with
             // m->hurtCounter as the arg; the ported KB set never enters via

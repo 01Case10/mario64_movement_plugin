@@ -185,18 +185,13 @@ pub fn analog_stick_held_back(cx: &mut ActionCx) -> bool {
 /// decomp: src/game/mario_actions_moving.c:485 (`check_ground_dive_or_punch`).
 pub fn check_ground_dive_or_punch(cx: &mut ActionCx, _prev_buttons: u16) -> Option<ActionResult> {
     if cx.state.input & f::B_PRESSED != 0 {
-        // Speed-kick dive: the decomp sets ONLY vel.y = 20.0 here —
-        // forwardVel is unchanged at this point. The +15 boost is applied
-        // by set_mario_action's ACT_DIVE case (mario.c:856-860).
+        // Speed-kick dive: the decomp sets ONLY vel.y = 20.0 here, then
+        // calls set_mario_action(ACT_DIVE) which applies the +15 boost
+        // AND sets UNKNOWN_08 + peakHeight (mario.c:856-888).
         if cx.state.forward_speed >= 29.0 && cx.proc.stick_mag > 48.0 {
             cx.state.vel.y = 20.0;
-            // decomp: ACT_DIVE case in set_mario_action (mario.c:856).
-            let mut forward_vel = cx.state.forward_speed + 15.0;
-            if forward_vel > 48.0 {
-                forward_vel = 48.0;
-            }
-            crate::step::mario_set_forward_vel(&mut cx.state, forward_vel);
-            return Some(cx.goto(ActionId::DIVE, 1));
+            let id = crate::actions::entry::set_mario_action_airborne(cx, ActionId::DIVE, 1);
+            return Some(cx.goto(id, 1));
         }
 
         return Some(cx.goto(ActionId::MOVE_PUNCHING, 0));

@@ -33,6 +33,7 @@ pub mod state;
 pub mod step;
 pub mod surface;
 pub mod trig;
+pub mod interaction;
 pub mod trig_tables;
 pub mod world;
 

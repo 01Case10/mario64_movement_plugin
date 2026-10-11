@@ -177,8 +177,10 @@ pub fn common_air_action_step(
                 let id = super::entry::set_mario_action_moving(cx, land_action);
                 Some(cx.goto_next(id, 0))
             } else {
-                // Fall damage took a transition (same-tick, TRUE).
-                Some(cx.goto(cx.state.action, cx.state.action_arg))
+                // decomp: check_fall_damage's TRUE return (via drop_and_set_mario_action)
+                // is DISCARDED by the caller (act_freefall etc. return FALSE), so the
+                // hard-fall action starts next tick, not same-tick.
+                Some(cx.goto_next(cx.state.action, cx.state.action_arg))
             }
         }
         AirStep::HitWall => {
