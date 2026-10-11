@@ -13,10 +13,12 @@
 
 use super::{ActionCx, ActionHandler, ActionResult};
 use crate::angles::Angle;
+use crate::anim_table as anim_id;
 use crate::events::Event;
 use crate::input::buttons;
-use crate::state::ActionId;
-use crate::step::step_air;
+use crate::state::{mario_flags, ActionId};
+use crate::step::{perform_air_step, AirStep, AIR_STEP_CHECK_LEDGE_GRAB};
+use crate::world::{CELL_HEIGHT_LIMIT, FLOOR_LOWER_LIMIT};
 use glam::Vec3;
 
 /// Animation slot ids for air actions.
@@ -44,14 +46,12 @@ pub mod slot {
 
 /// Per-action air behavior switches.
 struct AirConfig {
-    height_control: bool,
-    gravity: f32,
-    terminal: f32,
     steer_rate: u16,
     air_drag_threshold: f32,
     allow_dive: bool,
     allow_pound: bool,
-    /// Whether this action may ledge-grab (documented per action).
+    /// Whether this action may ledge-grab (decomp: `AIR_STEP_CHECK_LEDGE_GRAB`
+    /// in the action's `stepArg`).
     can_ledge_grab: bool,
     /// When true, wall hits slide along the wall (forward speed reset to
     /// 15) instead of routing to the air-hit-wall state. Used by the water
@@ -60,13 +60,31 @@ struct AirConfig {
     /// Whether the shared cancel set (water plunge, wall kick, dive,
     /// pound) runs. Disabled for the dead fall (no input response).
     allow_cancels: bool,
+    /// Animation id requested every frame via `common_air_action_step`
+    /// (decomp: `mario_actions_airborne.c:371`). `-1` = do not request
+    /// (placeholder until the action's anim id is ported).
+    anim: i32,
+    /// Animation id requested on the AIR_STEP_HIT_WALL arm instead of
+    /// `anim`. `None` = reuse `anim`. Needed by the knockbacks: decomp
+    /// `common_air_knockback_step` requests the action's animation on
+    /// AIR_STEP_NONE but MARIO_ANIM_BACKWARD_AIR_KB on AIR_STEP_HIT_WALL
+    /// (airborne.c:1097).
+    anim_wall: Option<i32>,
 }
 
-/// Track the peak height of the current airtime (for fall damage).
-fn track_peak(cx: &mut ActionCx) {
-    if cx.state.pos.y > cx.state.peak_height {
-        cx.state.peak_height = cx.state.pos.y;
-    }
+
+/// Mark the start of a jump (decomp: `set_jumping_action` sets
+/// `MARIO_UNKNOWN_08`, which arms the jump-ascent gravity strengthening).
+fn mark_jump(cx: &mut ActionCx) {
+    // decomp: set_jumping_action sets peakHeight and MARIO_UNKNOWN_08 (mario.c:887).
+    cx.state.peak_height = cx.state.pos.y;
+    cx.state.flags |= mario_flags::UNKNOWN_08;
+}
+
+/// Set the sound-played flags after a transition (decomp: the action's
+/// play_mario_sound runs after set_mario_action clears them).
+fn mark_jump_sound(cx: &mut ActionCx) {
+    cx.state.flags |= mario_flags::ACTION_SOUND_PLAYED | mario_flags::MARIO_SOUND_PLAYED;
 }
 
 /// Shared air cancels: B -> dive (speed > 28), Z -> ground pound.
@@ -79,8 +97,14 @@ fn air_cancels(cx: &mut ActionCx, prev_buttons: u16, cfg: &AirConfig) -> Option<
     }
     // Wall kick: A while the kick window from a recent wall hit is open.
     // (ID verified: wiki:Wall Kick rev 19311; numbers (verify))
-    if cx.pressed(buttons::A, prev_buttons) && cx.state.wall_kick_timer > 0 {
-        let n = cx.state.wall_normal;
+    // NOTE: not when already wall-kicking (decomp: act_wall_kick_air has no
+    // A check; airborne.c:618); otherwise the held A re-triggers the kick
+    // and the action loop cycles.
+    if cx.state.action != ActionId::WALL_KICK_AIR
+        && cx.pressed(buttons::A, prev_buttons)
+        && cx.state.wall_kick_timer > 0
+    {
+        let n = cx.state.wall.map(|w| w.normal).unwrap_or(glam::Vec3::X);
         return Some(enter_wall_kick(cx, n));
     }
     if cfg.allow_dive && cx.pressed(buttons::B, prev_buttons) {
@@ -123,15 +147,14 @@ fn air_common(cx: &mut ActionCx, prev_buttons: u16, cfg: &AirConfig) -> Option<A
     if let Some(iy) = cx.intended_yaw() {
         let mag = cx.intended_magnitude() / 32.0;
         if mag > 0.01 {
-            let dyaw = iy.diff_to(cx.state.face_yaw);
-            let dyaw_rad = dyaw as f32 / 65536.0 * std::f32::consts::TAU;
+            let dyaw = Angle(iy.diff_to(cx.state.face_yaw) as i16);
             // Forward accel: 1.5 * cos(dYaw) * mag. Side accel: 10.0 * sin(dYaw) * mag.
-            fwd += mag * dyaw_rad.cos() * 1.5;
-            side += mag * dyaw_rad.sin() * 10.0;
+            fwd += mag * crate::trig::coss(dyaw) * 1.5;
+            side += mag * crate::trig::sins(dyaw) * 10.0;
             // Turn facing independently (does not rotate velocity).
             // Multiplier comes from the action config: 512 for the
             // with-turn model, 0 to disable (knockbacks, dives).
-            let turn = Angle((p.steer_rate as f32 * dyaw_rad.sin() * mag) as i16);
+            let turn = Angle((p.steer_rate as f32 * crate::trig::sins(dyaw) * mag) as i16);
             cx.state.face_yaw = cx.state.face_yaw.wrapping_add(turn);
         }
     }
@@ -148,112 +171,125 @@ fn air_common(cx: &mut ActionCx, prev_buttons: u16, cfg: &AirConfig) -> Option<A
     cx.state.vel.x = nfx * fwd + nfz * side;
     cx.state.vel.z = nfz * fwd - nfx * side;
     cx.state.forward_speed = fwd;
-    // Gravity applies after movement and collision.
-    let vy_before_landing = cx.state.vel.y;
-    let out = step_air(&cx.state, cx.world, cx.params);
-    cx.state.pos = out.pos;
-    cx.state.vel.y = out.vel_y;
-    cx.state.floor_y = out.floor.map(|f| f.y);
-    track_peak(cx);
-    if out.wall_hit {
-        cx.state.wall_hit = true;
-        cx.state.wall_normal = out.wall_normal;
-        cx.events.push(Event::WallHit {
-            normal_yaw: crate::trig::atan2(out.wall_normal.x, out.wall_normal.z),
-        });
-        cx.state.wall_kick_timer = 5; // spec: wall.kick_window (verified: decomp act_air_hit_wall)
-                                       // Speed-dependent wall response.
-        let speed = (cx.state.vel.x * cx.state.vel.x + cx.state.vel.z * cx.state.vel.z).sqrt();
-        let n = out.wall_normal;
-        // Dive into a wall -> bonk -> backwards air knockback at any speed.
-        // (wiki:Dive@19303; numbers (verify))
-        if cx.state.action == ActionId::DIVE {
-            return Some(enter_backward_air_kb(cx, n, false));
-        }
-        // Slide kick and rollouts stop dead on walls.
-        let stopped_dead = matches!(
-            cx.state.action,
-            ActionId::SLIDE_KICK | ActionId::FORWARD_ROLLOUT | ActionId::BACKWARD_ROLLOUT
-        );
-        if stopped_dead {
-            cx.state.vel.x = 0.0;
-            cx.state.vel.z = 0.0;
-            cx.state.forward_speed = 0.0;
-        }
-        // Ledge grab takes priority over the bonk (the reference checks it
-        // during the step, before wall resolution): falling, no landing,
-        // and the action allows it. Conditions: wiki:Ledge Grab@19518.
-        if out.floor.is_none() && vy_before_landing <= 0.0 && cfg.can_ledge_grab {
-            if let Some(r) = try_ledge_grab(cx, out.wall_normal) {
-                return Some(r);
-            }
-        }
-        if cfg.wall_slide {
-            // Water jump: slide along the wall instead of bonking; forward
-            // speed resets to 15. (verified: decomp-derived)
-            // spec: swim.wall_slide_speed
-            let (fx, fz) = cx.forward_xz();
-            cx.state.vel.x = fx * 15.0;
-            cx.state.vel.z = fz * 15.0;
-            let dot = cx.state.vel.x * n.x + cx.state.vel.z * n.z;
-            if dot < 0.0 {
-                cx.state.vel.x -= dot * n.x;
-                cx.state.vel.z -= dot * n.z;
-            }
-            cx.state.forward_speed = 15.0;
-        } else if !stopped_dead {
-            if speed > 16.0 {
-                // Solid hit -> the transient air-hit-wall state: a 2-frame
-                // wall-kick window, then knockback or soft bonk by speed.
-                return Some(enter_air_hit_wall(cx, n));
-            }
-            // Graze (speed <= 16): no bonk, no action change, no dampening.
-            // Remove just the into-wall component so the character slides
-            // along the wall instead of penetrating it.
-            let dot = cx.state.vel.x * n.x + cx.state.vel.z * n.z;
-            if dot < 0.0 {
-                cx.state.vel.x -= dot * n.x;
-                cx.state.vel.z -= dot * n.z;
-            }
-            let (fx, fz) = cx.forward_xz();
-            cx.state.forward_speed = cx.state.vel.x * fx + cx.state.vel.z * fz;
-        }
+    // Step (ST-04): the ported perform_air_step moves, collides, applies
+    // gravity (ST-07), and updates peakHeight internally. The ledge grab
+    // now happens inside the step (ST-08 check_ledge_grab).
+    let step_arg = if cfg.can_ledge_grab {
+        AIR_STEP_CHECK_LEDGE_GRAB
     } else {
-        cx.state.wall_hit = false;
-        cx.state.wall_kick_timer = cx.state.wall_kick_timer.saturating_sub(1);
-    }
-    if let Some(f) = out.floor {
-        // Slide kick: the first touchdown bounces at half the impact speed
-        // (tracked via action_state); the second becomes a ground slide.
-        // The snap window can register a touchdown at the apex (impact
-        // speed ~ 0), so the bounce has a working minimum to guarantee
-        // the character actually leaves the ground (verify).
-        if cx.state.action == ActionId::SLIDE_KICK && cx.state.action_state == 0 {
-            cx.state.action_state = 1;
-            cx.state.pos = out.pos;
-            cx.state.floor_y = Some(f.y);
-            cx.state.vel.y = (out.fall_speed * 0.5).max(8.0);
-            cx.events.push(Event::Landed {
-                fall_speed: out.fall_speed,
+        0
+    };
+    // AIR_STEP_CHECK_HANG is not passed: START_HANGING is not implemented.
+    let vy_entry = cx.state.vel.y;
+    let step_result = perform_air_step(&mut cx.state, cx.world, step_arg);
+    match step_result {
+        AirStep::Landed => {
+            let fall_speed = (-vy_entry).max(0.0);
+            // Slide kick: the first touchdown bounces at half the impact speed
+            // (tracked via action_state); the second becomes a ground slide.
+            // decomp: the bounce also resets actionTimer to 0 (airborne.c:1580).
+            if cx.state.action == ActionId::SLIDE_KICK && cx.state.action_state == 0 {
+                cx.state.action_state = 1;
+                cx.state.action_timer = 0;
+                cx.state.vel.y = (fall_speed * 0.5).max(8.0);
+                cx.events.push(Event::Landed { fall_speed });
+            } else {
+                cx.events.push(Event::Landed { fall_speed });
+                if let Some(f) = cx.state.floor {
+                    cx.state.floor_kind = super::ground::surface_kind_index(f.kind);
+                }
+                cx.state.land_from = cx.state.action;
+                cx.timeline.slot = super::ground::slot::LAND;
+                return Some(enter_landing_for(cx, fall_speed));
+            }
+        }
+        AirStep::HitWall | AirStep::HitLavaWall => {
+            // decomp: common_air_action_step requests the action's
+            // animation before the wall handling (airborne.c:371); the
+            // knockbacks request MARIO_ANIM_BACKWARD_AIR_KB here instead
+            // (common_air_knockback_step, airborne.c:1097).
+            let wall_anim = cfg.anim_wall.unwrap_or(cfg.anim);
+            if wall_anim >= 0 {
+                cx.set_mario_animation(wall_anim);
+            }
+            // (No lava boost yet; HitLavaWall is handled as a wall hit.)
+            // Note: HIT_WALL from the OOB/ceiling branches has no referenced
+            // wall (the decomp's m->wall is NULL there too).
+            let n = cx.state.wall.map(|w| w.normal).unwrap_or_else(|| {
+                let (fx, fz) = cx.forward_xz();
+                Vec3::new(-fx, 0.0, -fz)
             });
-        } else {
-            let fall_speed = out.fall_speed;
-            cx.events.push(Event::Landed { fall_speed });
-            cx.state.floor_kind = super::ground::surface_kind_index(f.kind);
-            cx.state.land_from = cx.state.action;
-            cx.timeline.slot = super::ground::slot::LAND;
-            return Some(enter_landing_for(cx, fall_speed));
+            cx.events.push(Event::WallHit {
+                normal_yaw: crate::trig::atan2s(n.z, n.x),
+            });
+            cx.state.wall_kick_timer = 5; // spec: wall.kick_window (verified: decomp act_air_hit_wall)
+            // Speed-dependent wall response.
+            let speed = (cx.state.vel.x * cx.state.vel.x + cx.state.vel.z * cx.state.vel.z).sqrt();
+            // Dive into a wall -> bonk -> backwards air knockback at any speed.
+            // (wiki:Dive@19303; numbers (verify))
+            if cx.state.action == ActionId::DIVE {
+                return Some(enter_backward_air_kb(cx, n, false));
+            }
+            // Slide kick and rollouts stop dead on walls.
+            let stopped_dead = matches!(
+                cx.state.action,
+                ActionId::SLIDE_KICK | ActionId::FORWARD_ROLLOUT | ActionId::BACKWARD_ROLLOUT
+            );
+            if stopped_dead {
+                cx.state.vel.x = 0.0;
+                cx.state.vel.z = 0.0;
+                cx.state.forward_speed = 0.0;
+            }
+            if cfg.wall_slide {
+                // Water jump: slide along the wall instead of bonking; forward
+                // speed resets to 15. (verified: decomp-derived)
+                // spec: swim.wall_slide_speed
+                let (fx, fz) = cx.forward_xz();
+                cx.state.vel.x = fx * 15.0;
+                cx.state.vel.z = fz * 15.0;
+                let dot = cx.state.vel.x * n.x + cx.state.vel.z * n.z;
+                if dot < 0.0 {
+                    cx.state.vel.x -= dot * n.x;
+                    cx.state.vel.z -= dot * n.z;
+                }
+                cx.state.forward_speed = 15.0;
+            } else if !stopped_dead {
+                if speed > 16.0 {
+                    // Solid hit -> the transient air-hit-wall state: a 2-frame
+                    // wall-kick window, then knockback or soft bonk by speed.
+                    return Some(enter_air_hit_wall(cx, n));
+                }
+                // Graze (speed <= 16): no bonk, no action change, no dampening.
+                // Remove just the into-wall component so the character slides
+                // along the wall instead of penetrating it.
+                let dot = cx.state.vel.x * n.x + cx.state.vel.z * n.z;
+                if dot < 0.0 {
+                    cx.state.vel.x -= dot * n.x;
+                    cx.state.vel.z -= dot * n.z;
+                }
+                let (fx, fz) = cx.forward_xz();
+                cx.state.forward_speed = cx.state.vel.x * fx + cx.state.vel.z * fz;
+            }
+        }
+        AirStep::GrabbedLedge => {
+            // decomp: common_air_action_step requests MARIO_ANIM_IDLE_ON_LEDGE
+            // before the ledge-grab transition (airborne.c:371). The
+            // decomp's drop_and_set_mario_action return is discarded, so the
+            // grab runs next-tick.
+            cx.set_mario_animation(anim_id::MARIO_ANIM_IDLE_ON_LEDGE);
+            // The decomp's act_* returns FALSE after the grab, so LEDGE_GRAB
+            // first runs on the next tick.
+            return Some(cx.goto_next(ActionId::LEDGE_GRAB, 0));
+        }
+        AirStep::GrabbedCeiling | AirStep::None => {
+            // decomp: common_air_action_step requests the action's animation
+            // on AIR_STEP_NONE (airborne.c:371). GRABBED_CEILING is serviced
+            // by the hang action on the next tick.
+            if step_result == AirStep::None && cfg.anim >= 0 {
+                cx.set_mario_animation(cfg.anim);
+            }
         }
     }
-    // Gravity applies after movement and collision.
-    // Jump-height control: A released while rising fast quarters vy.
-    if p.height_control
-        && cx.input.buttons & buttons::A == 0
-        && cx.state.vel.y > cx.params.jump_height_control_threshold
-    {
-        cx.state.vel.y /= 4.0;
-    }
-    cx.state.vel.y = (cx.state.vel.y - p.gravity).max(p.terminal);
     None
 }
 
@@ -302,7 +338,7 @@ fn check_fall_damage(cx: &mut ActionCx, fall_speed: f32) -> Option<ActionResult>
         // Non-slippery floor (Default/NotSlippery class): damage + squish.
         // Queried live: the ground-pound landing path doesn't refresh
         // floor_kind before this runs.
-        let non_slippery = cx.world.find_floor(cx.state.pos, 1.0).is_some_and(|f| {
+        let non_slippery = cx.world.find_floor(cx.state.pos.x, cx.state.pos.y, cx.state.pos.z).is_some_and(|f| {
             matches!(
                 crate::world::SurfaceClass::of(f.kind),
                 crate::world::SurfaceClass::Default | crate::world::SurfaceClass::NotSlippery
@@ -324,36 +360,35 @@ fn check_fall_damage(cx: &mut ActionCx, fall_speed: f32) -> Option<ActionResult>
 /// the goto arg so the landing can record it.
 fn enter_landing_for(cx: &mut ActionCx, fall_speed: f32) -> ActionResult {
     if let Some(r) = check_fall_damage(cx, fall_speed) {
-        cx.state.peak_height = 0.0;
-        return r;
+            return r;
     }
-    cx.state.peak_height = 0.0;
     // Dead: collapse to idle (input stays ignored while health < 0x100).
     if cx.state.health < 0x100 {
-        return cx.goto(ActionId::IDLE, 2);
+        return cx.goto_next(ActionId::IDLE, 2);
     }
     // Deep quicksand landing: the escape sequence.
     if cx.state.quicksand_depth >= 11.0 {
-        return cx.goto(ActionId::QUICKSAND_JUMP_LAND, 0);
+        return cx.goto_next(ActionId::QUICKSAND_JUMP_LAND, 0);
     }
-    let arg = fall_speed.max(0.0) as u32;
+    // decomp: the landing arg is 0 (not fall_speed); fall damage was
+    // already assessed via check_fall_damage above.
     match cx.state.land_from {
-        ActionId::JUMP => cx.goto(ActionId::JUMP_LAND, arg),
-        ActionId::DOUBLE_JUMP => cx.goto(ActionId::DOUBLE_JUMP_LAND, arg),
-        ActionId::TRIPLE_JUMP => cx.goto(ActionId::TRIPLE_JUMP_LAND, arg),
-        ActionId::BACKFLIP => cx.goto(ActionId::BACKFLIP_LAND, arg),
-        ActionId::SIDE_FLIP => cx.goto(ActionId::SIDE_FLIP_LAND, arg),
-        ActionId::LONG_JUMP => cx.goto(ActionId::LONG_JUMP_LAND, arg),
+        ActionId::JUMP => cx.goto_next(ActionId::JUMP_LAND, 0),
+        ActionId::DOUBLE_JUMP => cx.goto_next(ActionId::DOUBLE_JUMP_LAND, 0),
+        ActionId::TRIPLE_JUMP => cx.goto_next(ActionId::TRIPLE_JUMP_LAND, 0),
+        ActionId::BACKFLIP => cx.goto_next(ActionId::BACKFLIP_LAND, 0),
+        ActionId::SIDE_FLIP => cx.goto_next(ActionId::SIDE_FLIP_LAND, 0),
+        ActionId::LONG_JUMP => cx.goto_next(ActionId::LONG_JUMP_LAND, 0),
         ActionId::DIVE => super::ground::enter_dive_slide(cx),
         ActionId::SLIDE_KICK => super::ground::enter_slide_kick_slide(cx),
-        ActionId::WALL_KICK_AIR => cx.goto(ActionId::JUMP_LAND, arg),
-        ActionId::WATER_JUMP => cx.goto(ActionId::JUMP_LAND, arg),
+        ActionId::WALL_KICK_AIR => cx.goto_next(ActionId::JUMP_LAND, 0),
+        ActionId::WATER_JUMP => cx.goto_next(ActionId::JUMP_LAND, 0),
         ActionId::STEEP_JUMP => {
             // Still moving backward along facing -> slide; else jump-land.
             if cx.state.forward_speed < 0.0 {
                 super::ground::begin_sliding(cx)
             } else {
-                cx.goto(ActionId::JUMP_LAND, arg)
+                cx.goto_next(ActionId::JUMP_LAND, 0)
             }
         }
         // Air knockbacks land into the matching ground knockbacks. The
@@ -379,16 +414,13 @@ fn enter_landing_for(cx: &mut ActionCx, fall_speed: f32) -> ActionResult {
             super::ground::enter_ground_kb(cx, id)
         }
         // Jump kick: plain freefall landing.
-        ActionId::JUMP_KICK => cx.goto(ActionId::FREEFALL_LAND, arg),
-        _ => cx.goto(ActionId::FREEFALL_LAND, arg),
+        ActionId::JUMP_KICK => cx.goto_next(ActionId::FREEFALL_LAND, 0),
+        _ => cx.goto_next(ActionId::FREEFALL_LAND, 0),
     }
 }
 
 fn base_air_config() -> AirConfig {
     AirConfig {
-        height_control: true,
-        gravity: 4.0,
-        terminal: -75.0,
         steer_rate: 512, // with-turn yaw multiplier (decomp: 512*sin(dyaw)*mag)
         air_drag_threshold: 32.0,
         allow_dive: true,
@@ -396,17 +428,17 @@ fn base_air_config() -> AirConfig {
         can_ledge_grab: true,
         allow_cancels: true,
         wall_slide: false,
+        anim: -1,
+        anim_wall: None,
     }
 }
 
-/// Jump entry velocity, halved while waist-deep in quicksand (depth > 1)
-/// and halved while squished. (decomp-derived quicksand/squish penalties)
-fn adjusted_jump_vy(cx: &ActionCx, vy: f32) -> f32 {
+/// Jump entry velocity: mirrors the decomp's `set_mario_y_vel_based_on_fspeed`
+/// (mario.c:763) — the computed vy is halved ONCE when *either*
+/// `squishTimer != 0` or `quicksandDepth > 1.0`, not once per condition.
+pub(crate) fn adjusted_jump_vy(cx: &ActionCx, vy: f32) -> f32 {
     let mut v = vy;
-    if cx.state.quicksand_depth > 1.0 {
-        v *= 0.5;
-    }
-    if cx.state.squish_timer > 0 {
+    if cx.state.squish_timer != 0 || cx.state.quicksand_depth > 1.0 {
         v *= 0.5;
     }
     v
@@ -415,6 +447,7 @@ fn adjusted_jump_vy(cx: &ActionCx, vy: f32) -> f32 {
 /// Shared jump entry: vertical speed = 42 + forward_speed/4, forward *= 0.8.
 /// (wiki:Single Jump@19309)
 pub fn enter_jump(cx: &mut ActionCx) -> ActionResult {
+    mark_jump(cx);
     let p = cx.params;
     let vy = adjusted_jump_vy(
         cx,
@@ -424,12 +457,16 @@ pub fn enter_jump(cx: &mut ActionCx) -> ActionResult {
     set_air_velocity(cx, vy);
     cx.timeline.slot = slot::JUMP;
     cx.events.push(Event::Jumped { velocity_y: vy });
-    cx.goto(ActionId::JUMP, 0)
+    let r = cx.goto(ActionId::JUMP, 0);
+    // decomp: act_jump runs same-frame and its play_mario_sound sets these.
+    mark_jump_sound(cx);
+    r
 }
 
 /// Double jump entry: vy = 52 + hspeed/4, forward *= 0.8.
 /// (wiki:Double Jump@18964)
 pub fn enter_double_jump(cx: &mut ActionCx) -> ActionResult {
+    mark_jump(cx);
     // spec: jump.double_vertical_base (verified: wiki:Double Jump@18964)
     let vy = adjusted_jump_vy(cx, 52.0 + cx.state.forward_speed * 0.25);
     cx.state.forward_speed *= 0.8;
@@ -442,6 +479,7 @@ pub fn enter_double_jump(cx: &mut ActionCx) -> ActionResult {
 /// Triple jump entry: vy = 69 fixed, forward *= 0.8, no height control.
 /// (wiki:Triple Jump@19300)
 pub fn enter_triple_jump(cx: &mut ActionCx) -> ActionResult {
+    mark_jump(cx);
     // spec: jump.triple_vertical (verified: wiki:Triple Jump@19300)
     let vy = adjusted_jump_vy(cx, 69.0);
     cx.state.forward_speed *= 0.8;
@@ -453,6 +491,7 @@ pub fn enter_triple_jump(cx: &mut ActionCx) -> ActionResult {
 
 /// Backflip entry: forward = -16, vy = 62. (wiki:Backflip@19307)
 pub fn enter_backflip(cx: &mut ActionCx) -> ActionResult {
+    mark_jump(cx);
     // spec: jump.backflip_forward / jump.backflip_vertical (verified)
     cx.state.forward_speed = -16.0;
     let vy = adjusted_jump_vy(cx, 62.0);
@@ -465,6 +504,7 @@ pub fn enter_backflip(cx: &mut ActionCx) -> ActionResult {
 /// Side flip entry: vy = 62, forward = 8, facing = intended yaw.
 /// (wiki:Side Flip@20374)
 pub fn enter_side_flip(cx: &mut ActionCx) -> ActionResult {
+    mark_jump(cx);
     // spec: jump.sideflip_vertical / jump.sideflip_forward (verified)
     if let Some(iy) = cx.intended_yaw() {
         cx.state.face_yaw = iy;
@@ -480,6 +520,7 @@ pub fn enter_side_flip(cx: &mut ActionCx) -> ActionResult {
 /// Long jump entry: vy = 30, forward speed x1.5 capped at 48.
 /// (decomp-derived; gravity -2 documented: wiki:Gravity@20294)
 pub fn enter_long_jump(cx: &mut ActionCx) -> ActionResult {
+    mark_jump(cx);
     // spec: jump.longjump_vertical / jump.longjump_forward_scale
     let vy = adjusted_jump_vy(cx, 30.0);
     cx.state.forward_speed = (cx.state.forward_speed * 1.5).min(48.0);
@@ -492,6 +533,7 @@ pub fn enter_long_jump(cx: &mut ActionCx) -> ActionResult {
 /// Dive entry: +15 horizontal (clamped to 48); +20 vy when from the ground.
 /// (wiki:Dive@19303)
 pub fn enter_dive(cx: &mut ActionCx, from_ground: bool) -> ActionResult {
+    mark_jump(cx);
     // spec: dive.horizontal_gain / dive.vertical_gain_ground (verified)
     cx.state.forward_speed = (cx.state.forward_speed + cx.params.dive_horizontal_gain).min(48.0);
     let vy = if from_ground { 20.0 } else { cx.state.vel.y };
@@ -507,12 +549,7 @@ pub fn enter_ground_pound(cx: &mut ActionCx) -> ActionResult {
     cx.state.forward_speed = 0.0;
     cx.state.vel = Vec3::ZERO;
     cx.timeline.slot = slot::GROUND_POUND;
-    let r = cx.goto(ActionId::GROUND_POUND, 0);
-    // spec: ground_pound.rise_headroom (decomp-derived)
-    if cx.world.find_ceiling(cx.state.pos, 320.0).is_some() {
-        cx.state.action_state = 1; // no room to rise: straight to the slam
-    }
-    r
+    cx.goto(ActionId::GROUND_POUND, 0)
 }
 
 fn set_air_velocity(cx: &mut ActionCx, vy: f32) {
@@ -521,29 +558,45 @@ fn set_air_velocity(cx: &mut ActionCx, vy: f32) {
 }
 
 macro_rules! air_action {
-    ($name:ident, $label:literal, $cfg:expr, $slot:expr) => {
+    ($name:ident, $label:literal, $cx:ident, $cfg:expr, $slot:expr) => {
         pub struct $name;
         impl ActionHandler for $name {
             fn name(&self) -> &'static str {
                 $label
             }
-            fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
-                if let Some(r) = air_common(cx, prev_buttons, &$cfg) {
+            fn tick(&self, $cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
+                if let Some(r) = air_common($cx, prev_buttons, &$cfg) {
                     return r;
                 }
-                cx.timeline.slot = $slot;
+                $cx.timeline.slot = $slot;
                 ActionResult::Stay
             }
         }
     };
 }
 
-air_action!(SingleJump, "SingleJump", base_air_config(), slot::JUMP);
+air_action!(
+    SingleJump,
+    "SingleJump",
+    cx,
+    AirConfig {
+        anim: anim_id::MARIO_ANIM_SINGLE_JUMP,
+        ..base_air_config()
+    },
+    slot::JUMP
+);
 air_action!(
     DoubleJump,
     "DoubleJump",
+    cx,
     AirConfig {
-        height_control: true, // (verify)
+        // decomp: act_double_jump picks the anim by vel[1] >= 0 BEFORE the
+        // step (airborne.c:461).
+        anim: if cx.state.vel.y >= 0.0 {
+            anim_id::MARIO_ANIM_DOUBLE_JUMP_RISE
+        } else {
+            anim_id::MARIO_ANIM_DOUBLE_JUMP_FALL
+        },
         ..base_air_config()
     },
     slot::DOUBLE_JUMP
@@ -551,8 +604,11 @@ air_action!(
 air_action!(
     TripleJump,
     "TripleJump",
+    cx,
     AirConfig {
-        height_control: false, // documented: no height control
+        // decomp: act_triple_jump requests MARIO_ANIM_TRIPLE_JUMP via
+        // common_air_action_step (airborne.c:480).
+        anim: anim_id::MARIO_ANIM_TRIPLE_JUMP,
         can_ledge_grab: false, // documented: no ledge grab or hang
         ..base_air_config()
     },
@@ -561,8 +617,11 @@ air_action!(
 air_action!(
     Backflip,
     "Backflip",
+    cx,
     AirConfig {
-        height_control: false, // (verify)
+        // decomp: act_backflip requests MARIO_ANIM_BACKFLIP via
+        // common_air_action_step (airborne.c:509).
+        anim: anim_id::MARIO_ANIM_BACKFLIP,
         allow_dive: false,
         can_ledge_grab: false, // documented: no ledge grab or hang
         ..base_air_config()
@@ -572,8 +631,11 @@ air_action!(
 air_action!(
     SideFlip,
     "SideFlip",
+    cx,
     AirConfig {
-        height_control: false, // (verify)
+        // decomp: act_side_flip requests MARIO_ANIM_SLIDEFLIP via
+        // common_air_action_step (airborne.c:595).
+        anim: anim_id::MARIO_ANIM_SLIDEFLIP,
         ..base_air_config()
     },
     slot::SIDE_FLIP
@@ -585,16 +647,24 @@ impl ActionHandler for LongJump {
         "LongJump"
     }
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
-        let gravity = cx.params.longjump_gravity;
-        if let Some(r) = air_common(
-            cx,
-            prev_buttons,
-            &AirConfig {
-                height_control: false, // (verify)
-                gravity,
-                ..base_air_config()
-            },
-        ) {
+        // decomp: act_long_jump latches actionState on vertical-wind floors
+        // (airborne.c:632); the latch only gates a sound, nothing reads it.
+        // The oMarioLongJumpIsSlow fast/slow anim pick is not modeled yet
+        // (Phase 5-7), so the fast variant is used.
+        if cx.state.action_state == 0
+            && cx
+                .state
+                .floor
+                .is_some_and(|f| f.surface_type == crate::world::surface_type::VERTICAL_WIND)
+        {
+            cx.state.action_state = 1;
+        }
+        // Gravity -2/terminal -75 comes from apply_gravity's action chain (ST-07).
+        let cfg = AirConfig {
+            anim: anim_id::MARIO_ANIM_FAST_LONGJUMP,
+            ..base_air_config()
+        };
+        if let Some(r) = air_common(cx, prev_buttons, &cfg) {
             return r;
         }
         cx.timeline.slot = slot::LONG_JUMP;
@@ -604,8 +674,12 @@ impl ActionHandler for LongJump {
 air_action!(
     Dive,
     "Dive",
+    cx,
     AirConfig {
-        height_control: false, // (verify)
+        // decomp: act_dive requests MARIO_ANIM_DIVE unconditionally at the
+        // top, before the step (airborne.c:725); air_common covers the
+        // NONE and HIT_WALL arms.
+        anim: anim_id::MARIO_ANIM_DIVE,
         steer_rate: 0,         // committed (verify)
         air_drag_threshold: 32.0,
         allow_dive: false,
@@ -617,6 +691,7 @@ air_action!(
 
 /// Slide kick entry: vy = 12, forward speed raised to at least 32.
 pub fn enter_slide_kick(cx: &mut ActionCx) -> ActionResult {
+    mark_jump(cx);
     cx.state.forward_speed = cx.state.forward_speed.max(32.0);
     set_air_velocity(cx, 12.0);
     cx.timeline.slot = slot::SLIDE_KICK;
@@ -642,6 +717,7 @@ pub fn enter_backward_rollout(cx: &mut ActionCx) -> ActionResult {
 /// are documented only: no enemies exist in the sim, so no hitboxes are
 /// simulated.
 pub fn enter_jump_kick(cx: &mut ActionCx) -> ActionResult {
+    mark_jump(cx);
     // spec: combat.jump_kick_vy (decomp-derived)
     set_air_velocity(cx, 20.0);
     cx.timeline.slot = slot::JUMP_KICK;
@@ -658,14 +734,23 @@ impl ActionHandler for SlideKick {
         "SlideKick"
     }
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
-        if cx.state.action_timer >= 30 {
+        // decomp: act_slide_kick requests MARIO_ANIM_SLIDE_KICK once, on the
+        // entry frame (actionState 0, actionTimer 0), before the timer
+        // increment (airborne.c:1580).
+        if cx.state.action_state == 0 && cx.state.action_timer == 0 {
+            cx.set_mario_animation(anim_id::MARIO_ANIM_SLIDE_KICK);
+        }
+        // decomp: `if (++(m->actionTimer) > 30 && ...)` — pre-increment.
+        cx.state.action_timer += 1;
+        if cx.state.action_timer > 30 {
             let high = cx
                 .world
-                .find_floor(cx.state.pos, 4096.0)
+                .find_floor(cx.state.pos.x, cx.state.pos.y, cx.state.pos.z)
                 .is_none_or(|f| cx.state.pos.y - f.y > 500.0);
             if high {
                 cx.timeline.slot = slot::FREEFALL;
-                return cx.goto(ActionId::FREEFALL, 0);
+                // decomp: ACT_FREEFALL with arg 2 (the slide-kick fall anim).
+                return cx.goto(ActionId::FREEFALL, 2);
             }
         }
         if let Some(r) = air_common(cx, prev_buttons, &base_air_config()) {
@@ -676,23 +761,82 @@ impl ActionHandler for SlideKick {
     }
 }
 
-air_action!(
-    ForwardRollout,
-    "ForwardRollout",
-    base_air_config(),
-    slot::ROLLOUT
-);
-air_action!(
-    BackwardRollout,
-    "BackwardRollout",
-    base_air_config(),
-    slot::ROLLOUT
-);
+/// Forward rollout: decomp act_forward_rollout (airborne.c:1353). The first
+/// tick raises actionState 0 -> 1 (the entry already set vy = 30); the anim
+/// is FORWARD_SPINNING while state 1, GENERAL_FALL once the spin ends
+/// (state 2, via is_anim_past_end). The anim is requested through
+/// air_common's NONE/HIT_WALL arms; re-requesting the same id on a wall hit
+/// is a no-op, matching the decomp (which requests nothing on HIT_WALL).
+pub struct ForwardRollout;
+impl ActionHandler for ForwardRollout {
+    fn name(&self) -> &'static str {
+        "ForwardRollout"
+    }
+    fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
+        if cx.state.action_state == 0 {
+            cx.state.action_state = 1;
+        }
+        let cfg = AirConfig {
+            anim: if cx.state.action_state == 1 {
+                anim_id::MARIO_ANIM_FORWARD_SPINNING
+            } else {
+                anim_id::MARIO_ANIM_GENERAL_FALL
+            },
+            ..base_air_config()
+        };
+        if let Some(r) = air_common(cx, prev_buttons, &cfg) {
+            return r;
+        }
+        // decomp: `if (m->actionState == 1 && is_anim_past_end(m)) m->actionState = 2;`
+        if cx.state.action_state == 1 && cx.is_anim_past_end() {
+            cx.state.action_state = 2;
+        }
+        cx.timeline.slot = slot::ROLLOUT;
+        ActionResult::Stay
+    }
+}
+
+/// Backward rollout: decomp act_backward_rollout (airborne.c:1393). Same
+/// shape as the forward rollout, but the spin is BACKWARD_SPINNING and the
+/// state advance fires when the anim frame reaches 2 (a raw animFrame
+/// comparison in the decomp, not is_anim_past_frame).
+pub struct BackwardRollout;
+impl ActionHandler for BackwardRollout {
+    fn name(&self) -> &'static str {
+        "BackwardRollout"
+    }
+    fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
+        if cx.state.action_state == 0 {
+            cx.state.action_state = 1;
+        }
+        let cfg = AirConfig {
+            anim: if cx.state.action_state == 1 {
+                anim_id::MARIO_ANIM_BACKWARD_SPINNING
+            } else {
+                anim_id::MARIO_ANIM_GENERAL_FALL
+            },
+            ..base_air_config()
+        };
+        if let Some(r) = air_common(cx, prev_buttons, &cfg) {
+            return r;
+        }
+        // decomp: `if (m->actionState == 1 && animFrame == 2) m->actionState = 2;`
+        if cx.state.action_state == 1 && cx.state.anim.frame == 2 {
+            cx.state.action_state = 2;
+        }
+        cx.timeline.slot = slot::ROLLOUT;
+        ActionResult::Stay
+    }
+}
 air_action!(
     WaterJump,
     "WaterJump",
+    cx,
     AirConfig {
-        height_control: false, // not in the reference's jump-height set
+        // decomp: act_water_jump requests MARIO_ANIM_SINGLE_JUMP at the top,
+        // before the step (airborne.c:822); air_common covers the NONE and
+        // HIT_WALL arms.
+        anim: anim_id::MARIO_ANIM_SINGLE_JUMP,
         wall_slide: true,      // walls slide (forward reset 15), no bonk
         ..base_air_config()
     },
@@ -709,6 +853,14 @@ impl ActionHandler for JumpKick {
         "JumpKick"
     }
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
+        // decomp: act_jump_kick requests MARIO_ANIM_AIR_KICK once
+        // (actionState 0 -> 1), forcing the restart with animID = -1, before
+        // the step (airborne.c:1631).
+        if cx.state.action_state == 0 {
+            cx.state.anim.cur_id = -1;
+            cx.set_mario_animation(anim_id::MARIO_ANIM_AIR_KICK);
+            cx.state.action_state = 1;
+        }
         let cfg = AirConfig {
             allow_dive: false, // committed to the kick (verify)
             ..base_air_config()
@@ -718,7 +870,7 @@ impl ActionHandler for JumpKick {
         }
         // Wall -> stop: the graze path in air_common kept the character
         // against the wall; end the kick here instead of sliding along.
-        if cx.state.wall_hit {
+        if cx.state.wall.is_some() {
             cx.state.vel.x = 0.0;
             cx.state.vel.z = 0.0;
             cx.state.forward_speed = 0.0;
@@ -738,13 +890,24 @@ impl ActionHandler for Freefall {
         "Freefall"
     }
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
-        let cfg = if cx.arg() == 2 {
+        let arg = cx.arg();
+        // Dead fall (health < 0x100): no input response. The decomp has no
+        // dead fall — actionArg only picks the anim — so dead-ness keys off
+        // health, not the arg. (Arg 2 is the slide-kick fall anim per
+        // act_slide_kick, and it must keep its cancels.)
+        let mut cfg = if cx.state.health < 0x100 {
             AirConfig {
                 allow_cancels: false,
                 ..base_air_config()
             }
         } else {
             base_air_config()
+        };
+        // decomp: act_freefall picks the animation by actionArg (airborne.c:525).
+        cfg.anim = match arg {
+            1 => anim_id::MARIO_ANIM_FALL_FROM_SLIDE,
+            2 => anim_id::MARIO_ANIM_FALL_FROM_SLIDE_KICK,
+            _ => anim_id::MARIO_ANIM_GENERAL_FALL,
         };
         if let Some(r) = air_common(cx, prev_buttons, &cfg) {
             return r;
@@ -760,9 +923,10 @@ impl ActionHandler for Freefall {
 /// Rise: the first 10 frames climb at (22 - 2*timer) units/frame (20 on the
 /// first tick down to 2 on the tenth; the 1-based timer is shifted to match
 /// the 0-based reference formula 20 - 2*t), vy pinned at -50, forward
-/// zeroed. Timer > 14 moves to the slam (simplification: the reference keys
-/// this off the start animation's end). Needs 320 headroom (checked at
-/// entry); without it the pound starts in the slam phase.
+/// zeroed. The slam starts when the timer reaches the start animation's
+/// loopEnd + 4 (decomp: airborne.c:918; 15 for the arg-0 anim). Needs 320
+/// headroom (checked at entry); without it the pound starts in the slam
+/// phase.
 /// Slam: gravity -4 from -50, terminal -75, no steering.
 pub struct GroundPound;
 impl ActionHandler for GroundPound {
@@ -772,14 +936,29 @@ impl ActionHandler for GroundPound {
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
         // spec: ground_pound.rise_frames / ground_pound.slam_transition
         if cx.state.action_state == 0 {
+            // decomp: act_ground_pound (airborne.c:918). The port's rise
+            // formula `22 - 2*t` reproduces the decomp's `20 - 2*timer` frame
+            // amounts with a 1-based shifted timer, so the increment comes
+            // first (first rise tick: t=1 -> +20).
+            cx.state.action_timer += 1;
             let t = cx.state.action_timer;
+            // decomp: the start anim depends on actionArg (1 only from the
+            // wing-cap flight, unimplemented in the port).
+            let start_anim = if cx.arg() == 0 {
+                anim_id::MARIO_ANIM_START_GROUND_POUND
+            } else {
+                anim_id::MARIO_ANIM_TRIPLE_JUMP_GROUND_POUND
+            };
             if t <= 10 {
                 cx.state.pos.y += 22.0 - 2.0 * t as f32;
             }
-            track_peak(cx);
             cx.state.forward_speed = 0.0;
             cx.state.vel = Vec3::new(0.0, -50.0, 0.0);
-            if t > 14 {
+            cx.set_mario_animation(start_anim);
+            // decomp: `if (m->actionTimer >= curAnim->loopEnd + 4)` moves to
+            // the slam. START_GROUND_POUND loopEnd = 11 -> timer 15, matching
+            // the old `t > 14` heuristic exactly.
+            if t >= crate::anim_table::anim_header(start_anim).loop_end as u32 + 4 {
                 cx.state.action_state = 1;
             }
             cx.timeline.slot = slot::GROUND_POUND;
@@ -788,6 +967,9 @@ impl ActionHandler for GroundPound {
         // Slam phase. No dive/kick cancel mid-slam: B did nothing here
         // before the slow-air jump-kick branch existed, and the slam
         // zeroes horizontal speed anyway. Pound re-entry stays allowed.
+        // decomp: the slam requests MARIO_ANIM_GROUND_POUND every frame,
+        // before the step (airborne.c:918).
+        cx.set_mario_animation(anim_id::MARIO_ANIM_GROUND_POUND);
         let slam_cfg = AirConfig {
             allow_dive: false,
             ..base_air_config()
@@ -797,36 +979,36 @@ impl ActionHandler for GroundPound {
         }
         cx.state.vel.x = 0.0;
         cx.state.vel.z = 0.0;
-        cx.state.vel.y = (cx.state.vel.y - 4.0).max(-75.0);
-        let out = step_air(&cx.state, cx.world, cx.params);
-        cx.state.pos = out.pos;
-        cx.state.vel.y = out.vel_y;
-        cx.state.floor_y = out.floor.map(|f| f.y);
-        track_peak(cx);
-        if out.wall_hit {
-            // Bonk off the wall into a backwards air knockback.
-            let n = out.wall_normal;
-            let away = crate::trig::atan2(n.x, n.z);
-            cx.state.face_yaw = away;
-            cx.state.forward_speed = -16.0;
-            let (fx, fz) = cx.forward_xz();
-            cx.state.vel.x = fx * -16.0;
-            cx.state.vel.z = fz * -16.0;
-            cx.state.vel.y = 40.0;
-            cx.timeline.slot = slot::AIR_KNOCKBACK;
-            return cx.goto(ActionId::BACKWARD_AIR_KB, 0);
-        }
-        if out.floor.is_some() {
-            let fall_speed = out.fall_speed;
-            cx.events.push(Event::Landed { fall_speed });
-            cx.state.land_from = ActionId::GROUND_POUND;
-            if let Some(r) = check_fall_damage(cx, fall_speed) {
-                cx.state.peak_height = 0.0;
-                return r;
+        // Gravity comes from perform_air_step's internal apply_gravity (ST-07).
+        let vy_entry = cx.state.vel.y;
+        match perform_air_step(&mut cx.state, cx.world, 0) {
+            AirStep::HitWall | AirStep::HitLavaWall => {
+                // Bonk off the wall into a backwards air knockback.
+                let n = cx.state.wall.map(|w| w.normal).unwrap_or(glam::Vec3::X);
+                let away = crate::trig::atan2s(n.z, n.x);
+                cx.state.face_yaw = away;
+                cx.state.forward_speed = -16.0;
+                let (fx, fz) = cx.forward_xz();
+                cx.state.vel.x = fx * -16.0;
+                cx.state.vel.z = fz * -16.0;
+                cx.state.vel.y = 40.0;
+                cx.timeline.slot = slot::AIR_KNOCKBACK;
+                return cx.goto_next(ActionId::BACKWARD_AIR_KB, 0);
             }
-            cx.state.peak_height = 0.0;
-            cx.timeline.slot = super::ground::slot::LAND;
-            return cx.goto(ActionId::FREEFALL_LAND, fall_speed.max(0.0) as u32);
+            AirStep::Landed => {
+                let fall_speed = (-vy_entry).max(0.0);
+                cx.events.push(Event::Landed { fall_speed });
+                cx.state.land_from = ActionId::GROUND_POUND;
+                if let Some(r) = check_fall_damage(cx, fall_speed) {
+                                    return r;
+                }
+                            cx.timeline.slot = super::ground::slot::LAND;
+                return cx.goto_next(ActionId::FREEFALL_LAND, fall_speed.max(0.0) as u32);
+            }
+            AirStep::GrabbedLedge => {
+                return cx.goto_next(ActionId::LEDGE_GRAB, 0);
+            }
+            AirStep::GrabbedCeiling | AirStep::None => {}
         }
         cx.timeline.slot = slot::GROUND_POUND;
         ActionResult::Stay
@@ -836,9 +1018,10 @@ impl ActionHandler for GroundPound {
 /// Wall-kick flight entry: face away from the wall, forward speed raised
 /// to at least 24, vertical speed `vy`. Routes to WALL_KICK_AIR.
 fn enter_wall_kick_flight(cx: &mut ActionCx, wall_normal: glam::Vec3, vy: f32) -> ActionResult {
+    mark_jump(cx);
     // spec: wall_kick.forward_min / wall_kick.vertical (decomp-derived)
     let vy = adjusted_jump_vy(cx, vy);
-    let away = crate::trig::atan2(wall_normal.x, wall_normal.z);
+    let away = crate::trig::atan2s(wall_normal.z, wall_normal.x);
     cx.state.face_yaw = away;
     cx.state.forward_speed = cx.state.forward_speed.max(24.0);
     set_air_velocity(cx, vy);
@@ -857,6 +1040,7 @@ pub fn enter_wall_kick(cx: &mut ActionCx, wall_normal: glam::Vec3) -> ActionResu
 /// (verified: decomp set_mario_action_airborne ACT_WATER_JUMP; the 62.0f set
 /// in check_water_jump is overwritten by the 42.0f transition assignment)
 pub fn enter_water_jump(cx: &mut ActionCx) -> ActionResult {
+    mark_jump(cx);
     // spec: swim.jump_vertical / swim.jump_forward_min (verified: decomp set_mario_action_airborne)
     cx.state.forward_speed = cx.state.forward_speed.max(15.0);
     set_air_velocity(cx, 42.0);
@@ -897,7 +1081,7 @@ pub fn enter_backward_air_kb(
     hard: bool,
 ) -> ActionResult {
     // spec: knockback.vertical / knockback.backward_speed (verify)
-    let away = crate::trig::atan2(wall_normal.x, wall_normal.z);
+    let away = crate::trig::atan2s(wall_normal.z, wall_normal.x);
     cx.state.face_yaw = away;
     cx.state.forward_speed = -15.0;
     set_air_velocity(cx, 40.0);
@@ -931,6 +1115,7 @@ pub fn enter_forward_air_kb(cx: &mut ActionCx, hard: bool) -> ActionResult {
 /// Steep jump entry: vy = 42 + forward/4; the lateral velocity component
 /// is scaled by 0.75, re-aiming motion along the slope.
 pub fn enter_steep_jump(cx: &mut ActionCx) -> ActionResult {
+    mark_jump(cx);
     // spec: jump.steep_vertical (decomp-derived)
     let vy = adjusted_jump_vy(cx, 42.0 + cx.state.forward_speed * 0.25);
     let (fx, fz) = cx.forward_xz();
@@ -943,94 +1128,6 @@ pub fn enter_steep_jump(cx: &mut ActionCx) -> ActionResult {
     cx.goto(ActionId::STEEP_JUMP, 0)
 }
 
-/// Try a ledge grab after a wall hit while falling.
-/// Conditions from wiki:Ledge Grab@19518:
-/// - wall 30 units above Mario, no wall 150 units above,
-/// - then a top-down floor search from 60 units into the wall and 160 up.
-fn try_ledge_grab(cx: &mut ActionCx, wall_normal: glam::Vec3) -> Option<ActionResult> {
-    // The wall must have displaced Mario against his velocity: the impact
-    // velocity (still intact at this point in the wall handling) must
-    // oppose the wall normal, which points away from the wall.
-    // (decomp-derived ledge-grab condition)
-    if cx.state.vel.x * wall_normal.x + cx.state.vel.z * wall_normal.z > 0.0 {
-        return None;
-    }
-    // Probe with Mario's own radius (+1 for the contact boundary): "is there
-    // a wall at this point", not "within reach".
-    let probe_r = cx.params.radius + 1.0;
-    let above_30 = cx.state.pos + glam::Vec3::new(0.0, 30.0, 0.0);
-    let above_150 = cx.state.pos + glam::Vec3::new(0.0, 150.0, 0.0);
-    // spec: ledge.wall_check_low / ledge.wall_check_high (verified)
-    if !cx.world.wall_probe(above_30, probe_r) {
-        return None;
-    }
-    if cx.world.wall_probe(above_150, probe_r) {
-        return None;
-    }
-    // Into the wall, 60 units; the radius eats 50, leaving 10 into the wall.
-    let mut into_wall = glam::Vec3::new(-wall_normal.x, 0.0, -wall_normal.z);
-    if into_wall.length_squared() < 1e-8 {
-        return None;
-    }
-    into_wall = into_wall.normalize();
-    // spec: ledge.search_inward / ledge.search_up (verified) — the search
-    // goes 60 into the wall to FIND the ledge top...
-    let search = cx.state.pos + into_wall * 60.0 + glam::Vec3::new(0.0, 160.0, 0.0);
-    let floor = cx.world.find_floor(search, 0.0)?;
-    // ...but Mario HANGS 30 units outside the wall face so his body never
-    // intersects it. (The decomp hangs him 10 inside, which our renderer
-    // shows as clipping; the hands-on-edge visual is preserved because the
-    // grab pose reaches forward.) Find the face with a tight probe at ledge
-    // height, searching BOTH directions: the grab runs before wall
-    // resolution, so pos may be inside the wall (forward-only probing then
-    // misses the face we came through), and for floating ledges the face
-    // only exists up at the ledge (feet-height probing misses it entirely).
-    let probe_y = floor.y - 10.0;
-    let probe_base = glam::Vec3::new(cx.state.pos.x, probe_y, cx.state.pos.z);
-    let mut fwd_d = 0.0;
-    while fwd_d < 150.0
-        && !cx
-            .world
-            .wall_probe(probe_base + into_wall * fwd_d, 2.0)
-    {
-        fwd_d += 2.0;
-    }
-    let mut back_d = 0.0;
-    while back_d < 150.0
-        && !cx
-            .world
-            .wall_probe(probe_base - into_wall * back_d, 2.0)
-    {
-        back_d += 2.0;
-    }
-    // Hang 30 outside the nearest face.
-    let hang_xz = if fwd_d <= back_d {
-        probe_base + into_wall * (fwd_d - 30.0)
-    } else {
-        probe_base - into_wall * (back_d + 30.0)
-    };
-    // Record the grabbed edge for IK hints: the wall face at the ledge top.
-    // (Renderer-only output; simulation logic never reads it.)
-    let face_xz = if fwd_d <= back_d {
-        probe_base + into_wall * fwd_d
-    } else {
-        probe_base - into_wall * back_d
-    };
-    cx.state.grab_point = Some(glam::Vec3::new(face_xz.x, floor.y, face_xz.z));
-    // Grab: snap so Mario's HANDS are at the ledge top, body hanging below:
-    // feet end up one body-height under the grabbed floor. (Snapping the
-    // feet to floor.y leaves him standing ON the ledge in the grab pose.)
-    // Face the wall, kill velocity.
-    let hang = cx.params.height;
-    cx.state.pos = glam::Vec3::new(hang_xz.x, floor.y - hang, hang_xz.z);
-    cx.state.vel = glam::Vec3::ZERO;
-    cx.state.forward_speed = 0.0;
-    cx.state.face_yaw = crate::trig::atan2(into_wall.x, into_wall.z);
-    cx.state.floor_y = Some(floor.y);
-    cx.timeline.slot = slot::LEDGE_GRAB;
-    cx.events.push(crate::events::Event::LedgeGrab);
-    Some(cx.goto(ActionId::LEDGE_GRAB, 0))
-}
 
 /// Wall-kick flight: no-turn air model, jump-height control on, B -> dive,
 /// Z -> ground pound, ledge grab allowed; landing -> JUMP_LAND.
@@ -1044,8 +1141,10 @@ impl ActionHandler for WallKickAir {
             cx,
             prev_buttons,
             &AirConfig {
-                height_control: true,
-                steer_rate: 0, // no-turn model: stick accelerates, facing holds
+                // decomp: act_wall_kick_air requests MARIO_ANIM_SLIDEJUMP via
+                // common_air_action_step (airborne.c:618).
+                anim: anim_id::MARIO_ANIM_SLIDEJUMP,
+                        steer_rate: 0, // no-turn model: stick accelerates, facing holds
                 ..base_air_config()
             },
         ) {
@@ -1072,26 +1171,34 @@ impl ActionHandler for AirHitWall {
         "AirHitWall"
     }
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
+        // decomp: `if (++(m->actionTimer) <= 2)` — pre-increment
+        // (airborne.c:1309).
+        cx.state.action_timer += 1;
         // Kickable window: the first two frames in this action.
         if cx.state.action_timer <= 2 {
             if cx.pressed(buttons::A, prev_buttons) {
-                return enter_wall_kick_flight(cx, cx.state.wall_normal, 52.0);
+                return enter_wall_kick_flight(cx, cx.state.wall.map(|w| w.normal).unwrap_or(glam::Vec3::X), 52.0);
             }
-            // Stunned drift: no air control, gravity applies.
-            cx.state.vel.y = (cx.state.vel.y - 4.0).max(-75.0);
-            let out = step_air(&cx.state, cx.world, cx.params);
-            cx.state.pos = out.pos;
-            cx.state.vel.y = out.vel_y;
-            cx.state.floor_y = out.floor.map(|f| f.y);
-            track_peak(cx);
-            if let Some(f) = out.floor {
-                let fall_speed = out.fall_speed;
+            // Stunned drift: no air control; gravity comes from
+            // perform_air_step's internal apply_gravity (ST-07).
+            let vy_entry = cx.state.vel.y;
+            if perform_air_step(&mut cx.state, cx.world, AIR_STEP_CHECK_LEDGE_GRAB)
+                == AirStep::Landed
+            {
+                let fall_speed = (-vy_entry).max(0.0);
                 cx.events.push(Event::Landed { fall_speed });
-                cx.state.floor_kind = super::ground::surface_kind_index(f.kind);
+                if let Some(f) = cx.state.floor {
+                    cx.state.floor_kind = super::ground::surface_kind_index(f.kind);
+                }
                 cx.state.land_from = cx.state.action;
                 cx.timeline.slot = super::ground::slot::LAND;
                 return enter_landing_for(cx, fall_speed);
             }
+            // decomp: the window fall-through requests
+            // MARIO_ANIM_START_WALLKICK (airborne.c:1309). (The decomp's
+            // missing return re-runs the action same-frame; not reproduced —
+            // see the deviation note above.)
+            cx.set_mario_animation(anim_id::MARIO_ANIM_START_WALLKICK);
             cx.timeline.slot = slot::AIR_HIT_WALL;
             return ActionResult::Stay;
         }
@@ -1100,7 +1207,7 @@ impl ActionHandler for AirHitWall {
             // Late-kick allowance: A still kicks for 5 more frames via the
             // wall_kick_timer path in air_cancels.
             cx.state.wall_kick_timer = 5;
-            return enter_backward_air_kb(cx, cx.state.wall_normal, false);
+            return enter_backward_air_kb(cx, cx.state.wall.map(|w| w.normal).unwrap_or(glam::Vec3::X), false);
         }
         enter_soft_bonk(cx)
     }
@@ -1109,7 +1216,6 @@ impl ActionHandler for AirHitWall {
 /// Shared knockback config: stunned, no air control, no cancels.
 fn knockback_config() -> AirConfig {
     AirConfig {
-        height_control: false,
         steer_rate: 0, // stunned (verify)
         air_drag_threshold: 32.0,
         allow_dive: false,
@@ -1128,7 +1234,13 @@ impl ActionHandler for BackwardAirKb {
         "BackwardAirKb"
     }
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
-        if let Some(r) = air_common(cx, prev_buttons, &knockback_config()) {
+        // decomp: common_air_knockback_step requests MARIO_ANIM_BACKWARD_AIR_KB
+        // on AIR_STEP_NONE and on AIR_STEP_HIT_WALL (airborne.c:1097).
+        let cfg = AirConfig {
+            anim: anim_id::MARIO_ANIM_BACKWARD_AIR_KB,
+            ..knockback_config()
+        };
+        if let Some(r) = air_common(cx, prev_buttons, &cfg) {
             return r;
         }
         cx.timeline.slot = slot::AIR_KNOCKBACK;
@@ -1146,7 +1258,15 @@ impl ActionHandler for ForwardAirKb {
         "ForwardAirKb"
     }
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
-        if let Some(r) = air_common(cx, prev_buttons, &knockback_config()) {
+        // decomp: common_air_knockback_step requests MARIO_ANIM_AIR_FORWARD_KB
+        // on AIR_STEP_NONE, MARIO_ANIM_BACKWARD_AIR_KB on AIR_STEP_HIT_WALL
+        // (airborne.c:1097).
+        let cfg = AirConfig {
+            anim: anim_id::MARIO_ANIM_AIR_FORWARD_KB,
+            anim_wall: Some(anim_id::MARIO_ANIM_BACKWARD_AIR_KB),
+            ..knockback_config()
+        };
+        if let Some(r) = air_common(cx, prev_buttons, &cfg) {
             return r;
         }
         cx.timeline.slot = slot::AIR_KNOCKBACK;
@@ -1164,10 +1284,15 @@ impl ActionHandler for SoftBonk {
         "SoftBonk"
     }
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
+        // decomp: act_soft_bonk passes MARIO_ANIM_GENERAL_FALL to
+        // common_air_knockback_step; the HIT_WALL arm requests
+        // MARIO_ANIM_BACKWARD_AIR_KB (airborne.c:1097,1247).
         if let Some(r) = air_common(
             cx,
             prev_buttons,
             &AirConfig {
+                anim: anim_id::MARIO_ANIM_GENERAL_FALL,
+                anim_wall: Some(anim_id::MARIO_ANIM_BACKWARD_AIR_KB),
                 can_ledge_grab: true,
                 ..knockback_config()
             },
@@ -1189,8 +1314,7 @@ impl ActionHandler for SteepJump {
     }
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
         let cfg = AirConfig {
-            height_control: true, // steep jumps honor jump-height control
-            ..base_air_config()
+                ..base_air_config()
         };
         if let Some(r) = air_cancels(cx, prev_buttons, &cfg) {
             return r;
@@ -1202,35 +1326,40 @@ impl ActionHandler for SteepJump {
         cx.state.vel.x = fx * fwd + fz * side;
         cx.state.vel.z = fz * fwd - fx * side;
         cx.state.forward_speed = fwd;
-        // Gravity applies after movement (below the step).
-        let out = step_air(&cx.state, cx.world, cx.params);
-        cx.state.pos = out.pos;
-        cx.state.vel.y = out.vel_y;
-        cx.state.floor_y = out.floor.map(|f| f.y);
-        track_peak(cx);
-        if out.wall_hit {
-            // Stop dead; the next ground tick sorts out the floor.
-            cx.state.vel.x = 0.0;
-            cx.state.vel.z = 0.0;
-            cx.state.forward_speed = 0.0;
-            cx.timeline.slot = super::ground::slot::DECEL;
-            return cx.goto(ActionId::DECELERATING, 0);
+        // Gravity (and jump-height control) come from perform_air_step's
+        // internal apply_gravity (ST-07).
+        let vy_entry = cx.state.vel.y;
+        // decomp: act_steep_jump requests MARIO_ANIM_SINGLE_JUMP after the
+        // switch, unconditionally — even on frames that transition
+        // (airborne.c:888).
+        match perform_air_step(&mut cx.state, cx.world, AIR_STEP_CHECK_LEDGE_GRAB) {
+            AirStep::HitWall | AirStep::HitLavaWall => {
+                // Stop dead; the next ground tick sorts out the floor.
+                cx.state.vel.x = 0.0;
+                cx.state.vel.z = 0.0;
+                cx.state.forward_speed = 0.0;
+                cx.timeline.slot = super::ground::slot::DECEL;
+                cx.set_mario_animation(anim_id::MARIO_ANIM_SINGLE_JUMP);
+                return cx.goto_next(ActionId::DECELERATING, 0);
+            }
+            AirStep::Landed => {
+                let fall_speed = (-vy_entry).max(0.0);
+                cx.events.push(Event::Landed { fall_speed });
+                if let Some(f) = cx.state.floor {
+                    cx.state.floor_kind = super::ground::surface_kind_index(f.kind);
+                }
+                cx.state.land_from = ActionId::STEEP_JUMP;
+                cx.timeline.slot = super::ground::slot::LAND;
+                cx.set_mario_animation(anim_id::MARIO_ANIM_SINGLE_JUMP);
+                return enter_landing_for(cx, fall_speed);
+            }
+            AirStep::GrabbedLedge => {
+                cx.set_mario_animation(anim_id::MARIO_ANIM_SINGLE_JUMP);
+                return cx.goto_next(ActionId::LEDGE_GRAB, 0);
+            }
+            AirStep::GrabbedCeiling | AirStep::None => {}
         }
-        if let Some(f) = out.floor {
-            let fall_speed = out.fall_speed;
-            cx.events.push(Event::Landed { fall_speed });
-            cx.state.floor_kind = super::ground::surface_kind_index(f.kind);
-            cx.state.land_from = ActionId::STEEP_JUMP;
-            cx.timeline.slot = super::ground::slot::LAND;
-            return enter_landing_for(cx, fall_speed);
-        }
-        // Jump-height control: A released while rising fast quarters vy.
-        if cx.input.buttons & buttons::A == 0
-            && cx.state.vel.y > cx.params.jump_height_control_threshold
-        {
-            cx.state.vel.y /= 4.0;
-        }
-        cx.state.vel.y = (cx.state.vel.y - 4.0).max(-75.0);
+        cx.set_mario_animation(anim_id::MARIO_ANIM_SINGLE_JUMP);
         cx.timeline.slot = slot::STEEP_JUMP;
         ActionResult::Stay
     }
@@ -1251,6 +1380,11 @@ impl ActionHandler for LedgeGrab {
         "LedgeGrab"
     }
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
+        // decomp: act_ledge_grab caps the hang timer at 10
+        // (`if (m->actionTimer < 10) m->actionTimer++;`, automatic.c:543).
+        if cx.state.action_timer < 10 {
+            cx.state.action_timer += 1;
+        }
         // Release: the ledge floor he's hanging from got too steep.
         // Probe at hand height over the LEDGE (30 inside the wall): the hang
         // point itself is 30 outside the wall, so a probe there would find
@@ -1261,19 +1395,18 @@ impl ActionHandler for LedgeGrab {
         let (fx, fz) = cx.forward_xz();
         let over_ledge =
             cx.state.pos + glam::Vec3::new(fx * 30.0, cx.params.height, fz * 30.0);
-        if let Some(f) = cx.world.find_floor(over_ledge, 1.0) {
+        if let Some(f) = cx.world.find_floor(over_ledge.x, over_ledge.y, over_ledge.z) {
             if f.normal.y < 0.9063 {
                 cx.timeline.slot = slot::FREEFALL;
                 return cx.goto(ActionId::FREEFALL, 0);
             }
         }
-        // A: fast climb, needs 160 units of headroom above the ledge.
-        // Probe from over the ledge at hand height: the feet dangle a full
-        // body-height below, so a feet-level probe would see the ledge's
-        // own underside as a ceiling and wrongly block the climb.
-        if cx.pressed(buttons::A, prev_buttons)
-            && cx.world.find_ceiling(over_ledge, 160.0).is_none()
-        {
+        // A: fast climb. Decomp `act_ledge_grab` (automatic.c:558):
+        // `hasSpaceForMario = (m->ceilHeight - m->floorHeight >= 160.0f)`.
+        // Uses the geometry-stage ceil/floor heights, not a probe.
+        let ceil_h = cx.state.ceil_y.unwrap_or(CELL_HEIGHT_LIMIT);
+        let floor_h = cx.state.floor_y.unwrap_or(FLOOR_LOWER_LIMIT);
+        if cx.pressed(buttons::A, prev_buttons) && ceil_h - floor_h >= 160.0 {
             return cx.goto(ActionId::LEDGE_CLIMB_FAST, 0);
         }
         // Z: let go, dropping away from the wall.
@@ -1293,6 +1426,9 @@ impl ActionHandler for LedgeGrab {
             }
         }
         cx.state.vel = glam::Vec3::ZERO;
+        // decomp: act_ledge_grab requests MARIO_ANIM_IDLE_ON_LEDGE every
+        // frame (automatic.c:543).
+        cx.set_mario_animation(anim_id::MARIO_ANIM_IDLE_ON_LEDGE);
         cx.timeline.slot = slot::LEDGE_GRAB;
         ActionResult::Stay
     }
@@ -1305,7 +1441,10 @@ fn ledge_let_go(cx: &mut ActionCx) -> ActionResult {
     cx.state.forward_speed = -8.0; // spec: ledge.drop_speed (verified)
     cx.state.vel = glam::Vec3::ZERO;
     cx.timeline.slot = slot::FREEFALL;
-    cx.goto(ActionId::FREEFALL, 0)
+    // The decomp's let_go_of_ledge returns set_mario_action (TRUE), but the
+    // plugin's FREEFALL would land same-tick from the ledge top; book it for
+    // the next tick (the action-function-returns-FALSE semantics).
+    cx.goto_next(ActionId::FREEFALL, 0)
 }
 
 /// Pull up onto the ledge after a climb: move forward (toward the wall,
@@ -1318,7 +1457,7 @@ fn ledge_pull_up(cx: &mut ActionCx, distance: f32) -> ActionResult {
     // height, since the feet dangle a full body-height below the grab point
     // and a feet-level probe would find the ground far below instead.
     let hands = cx.state.pos + glam::Vec3::new(0.0, cx.params.height, 0.0);
-    if let Some(f) = cx.world.find_floor(hands, 10.0) {
+    if let Some(f) = cx.world.find_floor(hands.x, hands.y, hands.z) {
         cx.state.pos.y = f.y;
         cx.state.floor_y = Some(f.y);
     }
@@ -1342,26 +1481,22 @@ impl ActionHandler for LedgeClimbFast {
         "LedgeClimbFast"
     }
     fn tick(&self, cx: &mut ActionCx, _prev_buttons: u16) -> ActionResult {
-        // Pull-up check first: the timer is already incremented when the
-        // tick runs, so checking after the motion would double-move.
+        // decomp: the climb timer advances every frame (via
+        // update_ledge_climb_camera, automatic.c:531); the port's pull-up
+        // trigger keys off it, so the increment is explicit here.
+        cx.state.action_timer += 1;
+        // decomp: update_ledge_climb requests MARIO_ANIM_FAST_LEDGE_GRAB every
+        // frame (automatic.c:531).
+        cx.set_mario_animation(anim_id::MARIO_ANIM_FAST_LEDGE_GRAB);
+        // Pull-up check after the increment: checking before would double-move.
         if cx.state.action_timer >= 8 {
             return ledge_pull_up(cx, 14.0);
         }
-        // Up first, then over: rise to the ledge top, then travel forward
-        // at the top level. Never moves horizontally while below the top —
-        // that's what drove the body through the ledge. (Branch on height,
-        // not the timer, so the phase change is exact.)
-        let top = cx
-            .state
-            .floor_y
-            .unwrap_or(cx.state.pos.y + cx.params.height);
-        if cx.state.pos.y < top - 0.5 {
-            cx.state.pos.y = (cx.state.pos.y + 32.0).min(top);
-        } else {
-            let (fx, fz) = cx.forward_xz();
-            cx.state.pos.x += fx * 20.0;
-            cx.state.pos.z += fz * 20.0;
-        }
+        // The decomp pins m->pos to the ledge top for the whole climb
+        // (check_ledge_grab places the feet AT the top); the climb animation's
+        // root motion does the visual rise. Our procedural character has no
+        // root motion, so we hold position here and the pull-up does the
+        // +14 forward nudge (decomp climb_up_ledge) at the end.
         cx.state.vel = glam::Vec3::ZERO;
         cx.timeline.slot = slot::LEDGE_GRAB;
         ActionResult::Stay
@@ -1375,6 +1510,13 @@ impl ActionHandler for LedgeClimbSlow1 {
         "LedgeClimbSlow1"
     }
     fn tick(&self, cx: &mut ActionCx, _prev_buttons: u16) -> ActionResult {
+        // decomp: the climb timer advances every frame (via
+        // update_ledge_climb_camera, automatic.c:531).
+        cx.state.action_timer += 1;
+        // decomp: update_ledge_climb requests MARIO_ANIM_SLOW_LEDGE_GRAB every
+        // frame (automatic.c:531); slow parts 1 and 2 share the decomp's
+        // act_ledge_climb_slow.
+        cx.set_mario_animation(anim_id::MARIO_ANIM_SLOW_LEDGE_GRAB);
         cx.timeline.slot = slot::LEDGE_GRAB;
         // Gradual pull-up like the fast climb, spread over the 17 frames, so
         // the body rises instead of teleporting up when Slow2 pulls up.
@@ -1398,8 +1540,13 @@ impl ActionHandler for LedgeClimbSlow2 {
         "LedgeClimbSlow2"
     }
     fn tick(&self, cx: &mut ActionCx, _prev_buttons: u16) -> ActionResult {
+        // decomp: the climb timer advances every frame (via
+        // update_ledge_climb_camera, automatic.c:531). Slow part 2 shares the
+        // decomp's act_ledge_climb_slow with part 1 (automatic.c:600).
+        cx.state.action_timer += 1;
+        cx.set_mario_animation(anim_id::MARIO_ANIM_SLOW_LEDGE_GRAB);
         cx.timeline.slot = slot::LEDGE_GRAB;
-        if cx.state.action_timer >= 11 && (cx.input.stick_held() || cx.input.buttons != 0) {
+        if cx.state.action_timer >= 11 && (cx.stick_held() || cx.input.buttons != 0) {
             return ledge_pull_up(cx, 54.0);
         }
         if cx.state.action_timer >= 120 {
