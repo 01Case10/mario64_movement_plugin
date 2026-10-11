@@ -49,10 +49,11 @@ fn common_ground_knockback_action(
     //         `else play_sound_if_no_flag(m, SOUND_MARIO_OOOF2, MARIO_MARIO_SOUND_PLAYED);`
     // Audio skipped; the flags are real compared state.
     if arg3 != 0 {
-        crate::sound::play_mario_heavy_landing_sound_once(&mut cx.state);
+        crate::sound::play_mario_heavy_landing_sound_once(&mut cx.state, crate::sound::SoundEvent::Landing);
     }
     crate::sound::play_sound_if_no_flag(
         &mut cx.state,
+        crate::sound::SoundEvent::Bonk,
         crate::state::mario_flags::MARIO_SOUND_PLAYED,
     );
 
