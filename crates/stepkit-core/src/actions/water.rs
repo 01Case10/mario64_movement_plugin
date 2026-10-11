@@ -14,8 +14,10 @@
 //! behavioral descriptions; no decompiled source appears in this repo.
 
 use super::{ActionCx, ActionHandler, ActionResult};
+use crate::anim_table;
 use crate::input::buttons;
-use crate::state::ActionId;
+use crate::state::{act_flags, ActionId};
+use crate::world::FLOOR_LOWER_LIMIT;
 
 pub mod slot {
     pub const WATER_PLUNGE: u32 = 21;
@@ -45,7 +47,10 @@ pub mod id {
 /// Check for water-plunge entry. Returns the water surface y if Mario is
 /// more than 100 units below it.
 pub fn water_plunge_surface(cx: &ActionCx) -> Option<f32> {
-    let wl = cx.world.water_level(cx.state.pos.x, cx.state.pos.z)?;
+    let wl = cx.world.find_water_level(cx.state.pos.x, cx.state.pos.z);
+    if wl <= FLOOR_LOWER_LIMIT {
+        return None;
+    }
     (cx.state.pos.y < wl - 100.0).then_some(wl)
 }
 
@@ -70,23 +75,48 @@ impl ActionHandler for WaterPlunge {
         "WaterPlunge"
     }
     fn tick(&self, cx: &mut ActionCx, _prev_buttons: u16) -> ActionResult {
-        // NOTE: step::tick already incremented action_timer; do not add again.
+        // Decomp `act_water_plunge` (mario_actions_submerged.c:953): the timer
+        // increments at the top of the tick (`m->actionTimer++`, line 963).
+        cx.state.action_timer += 1;
+        // Decomp lines 969-980: one-shot splash latch on the first frame
+        // (`actionState` 0 -> 1; sound/particles have no core equivalent).
+        if cx.state.action_state == 0 {
+            cx.state.action_state = 1;
+        }
         // Drag to a stop, then the recovery pose.
         cx.state.vel.x *= 0.9;
         cx.state.vel.z *= 0.9;
         cx.state.vel.y *= 0.9;
         cx.state.pos += cx.state.vel;
-        // End on floor contact, or after 20 frames.
-        // spec: swim.plunge_end_frames (verified: decomp-derived)
-        if let Some(f) = cx.world.find_floor(cx.state.pos, 1.0) {
+        // End on floor contact, or when the timer passes 20 frames.
+        // Decomp line 985: `m->actionTimer > 20` (post-increment), so the
+        // exit fires on the 21st tick.
+        // NOTE: the decomp discards every `set_mario_action` return here and
+        // falls through to `return FALSE`, so its exit is next-tick; this
+        // core keeps the historical same-tick `goto` (flagged, not changed).
+        // NOTE: the decomp's vel-based exit (`vel.y >= endVSpeed`, 0.0 near
+        // the surface / -5.0 deep) and the diving-entry exit target
+        // (ACT_FLUTTER_KICK, case 2) belong to the later velocity/step port.
+        if let Some(f) = cx.world.find_floor(cx.state.pos.x, cx.state.pos.y, cx.state.pos.z) {
             if cx.state.pos.y <= f.y + 1.0 {
                 cx.state.pos.y = f.y;
                 return cx.goto(id::WATER_ACTION_END, 0);
             }
         }
-        if cx.state.action_timer >= 20 {
+        if cx.state.action_timer > 20 {
             return cx.goto(id::WATER_ACTION_END, 0);
         }
+        // Decomp lines 1003-1021: the plunge anim follows `stateFlags` every
+        // tick — FLUTTERKICK when entering from a diving action or holding A,
+        // WATER_ACTION_END otherwise. (Held-object/metal cases 1,3,4,5 have
+        // no core equivalent yet.)
+        let diving_entry = cx.state.prev_action.0 & act_flags::DIVING != 0
+            || cx.input.buttons & buttons::A != 0;
+        cx.set_mario_animation(if diving_entry {
+            anim_table::MARIO_ANIM_FLUTTERKICK
+        } else {
+            anim_table::MARIO_ANIM_WATER_ACTION_END
+        });
         ActionResult::Stay
     }
 }
@@ -99,7 +129,10 @@ impl ActionHandler for WaterPlunge {
 /// Returns the water level, or `None` when the character has left the water
 /// or breached the surface hard; both cases go to FREEFALL.
 fn swim_move(cx: &mut ActionCx) -> Option<f32> {
-    let wl = cx.world.water_level(cx.state.pos.x, cx.state.pos.z)?;
+    let wl = cx.world.find_water_level(cx.state.pos.x, cx.state.pos.z);
+    if wl <= FLOOR_LOWER_LIMIT {
+        return None;
+    }
     // Steering: yaw follows the stick; pitch comes from stick_y.
     if let Some(iy) = cx.intended_yaw() {
         cx.state.face_yaw = cx.state.face_yaw.approach(iy, 0x400);
@@ -126,7 +159,7 @@ fn swim_move(cx: &mut ActionCx) -> Option<f32> {
         }
     }
     // Don't sink through the floor.
-    if let Some(f) = cx.world.find_floor(cx.state.pos, 200.0) {
+    if let Some(f) = cx.world.find_floor(cx.state.pos.x, cx.state.pos.y, cx.state.pos.z) {
         if cx.state.pos.y < f.y + 20.0 {
             cx.state.pos.y = f.y + 20.0;
             cx.state.vel.y = cx.state.vel.y.max(0.0);
@@ -179,10 +212,10 @@ impl ActionHandler for WaterIdle {
         "WaterIdle"
     }
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
-        let wl = match cx.world.water_level(cx.state.pos.x, cx.state.pos.z) {
-            Some(wl) => wl,
-            None => return cx.goto(ActionId::FREEFALL, 0),
-        };
+        let wl = cx.world.find_water_level(cx.state.pos.x, cx.state.pos.z);
+        if wl <= FLOOR_LOWER_LIMIT {
+            return cx.goto(ActionId::FREEFALL, 0);
+        }
         if let Some(r) = check_water_jump(cx, prev_buttons, wl) {
             return r;
         }
@@ -212,6 +245,18 @@ impl ActionHandler for WaterIdle {
         if swim_move(cx).is_none() {
             return cx.goto(ActionId::FREEFALL, 0);
         }
+        // Decomp `common_idle_step` (mario_actions_submerged.c:305-327), as
+        // called by `act_water_idle` (lines 341-344): the tread always uses
+        // `set_mario_anim_with_accel` with 0x10000, or 0x30000 when the face
+        // pitch is below -0x1000 (pitched up hard).
+        // NOTE: the swim step does not maintain `face_pitch` yet (later
+        // phase), so this currently always selects 0x10000.
+        let accel = if cx.state.face_pitch.0 < -0x1000 {
+            0x30000
+        } else {
+            0x10000
+        };
+        cx.set_mario_anim_with_accel(anim_table::MARIO_ANIM_WATER_IDLE, accel);
         cx.timeline.slot = slot::WATER_IDLE;
         ActionResult::Stay
     }
@@ -227,15 +272,35 @@ impl ActionHandler for Breaststroke {
         "Breaststroke"
     }
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
-        let wl = match cx.world.water_level(cx.state.pos.x, cx.state.pos.z) {
-            Some(wl) => wl,
-            None => return cx.goto(ActionId::FREEFALL, 0),
-        };
+        let wl = cx.world.find_water_level(cx.state.pos.x, cx.state.pos.z);
+        if wl <= FLOOR_LOWER_LIMIT {
+            return cx.goto(ActionId::FREEFALL, 0);
+        }
+        // Decomp `act_breaststroke` line 519: `if (++m->actionTimer == 14)` —
+        // a pre-increment, and the frame-14 exit is checked before the rest
+        // of the body runs.
+        cx.state.action_timer += 1;
+        // NOTE: the decomp exits to ACT_FLUTTER_KICK at frame 14
+        // (lines 519-521); this core keeps the historical SWIMMING_END
+        // target — flagged, later phase (transition, not timer discipline).
+        // NOTE: the decomp's chain is an `actionState` flag set on A during
+        // frames 2-5, consumed at frame 9 with `set_anim_to_frame(0)`,
+        // `actionTimer = 1`, and a strength reset (lines 532-541); this core
+        // keeps its immediate re-trigger (+10 strength) model — flagged.
+        // NOTE: the decomp resets strength when `actionArg == 0`
+        // (line 513-515) and adds +0.5/frame for timer < 6 (line 528);
+        // both are strength/velocity behavior tied to the chain model above —
+        // flagged, not ported.
+        if cx.state.action_timer == 14 {
+            return cx.goto(id::SWIMMING_END, 0);
+        }
         if let Some(r) = check_water_jump(cx, prev_buttons, wl) {
             return r;
         }
         // Chain window: A during frames 2-5 builds strength and re-triggers
-        // the stroke from the top.
+        // the stroke from the top. The window reads the post-increment
+        // timer, matching the decomp's `>= 2 && < 6` on the incremented value
+        // (line 532).
         // spec: swim.chain_window / swim.chain_bonus / swim.strength_max
         if cx.pressed(buttons::A, prev_buttons) && (2..=5).contains(&cx.state.action_timer) {
             cx.state.swim_strength = (cx.state.swim_strength + 10).min(280);
@@ -252,13 +317,12 @@ impl ActionHandler for Breaststroke {
             // spec: swim.stroke_power_gain / swim.stroke_power_frame
             cx.state.forward_speed += 1.5;
         }
-        // spec: swim.stroke_end_frame (verified: decomp-derived)
-        if t >= 14 {
-            return cx.goto(id::SWIMMING_END, 0);
-        }
         // The stroke's rated speed: strength/10.
         let cap = cx.state.swim_strength as f32 / 10.0;
         cx.state.forward_speed = cx.state.forward_speed.min(cap);
+        // Decomp line 556: the stroke requests MARIO_ANIM_SWIM_PART1 every
+        // tick (before `common_swimming_step`).
+        cx.set_mario_animation(anim_table::MARIO_ANIM_SWIM_PART1);
         if swim_move(cx).is_none() {
             return cx.goto(ActionId::FREEFALL, 0);
         }
@@ -276,10 +340,10 @@ impl ActionHandler for SwimmingEnd {
         "SwimmingEnd"
     }
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
-        let wl = match cx.world.water_level(cx.state.pos.x, cx.state.pos.z) {
-            Some(wl) => wl,
-            None => return cx.goto(ActionId::FREEFALL, 0),
-        };
+        let wl = cx.world.find_water_level(cx.state.pos.x, cx.state.pos.z);
+        if wl <= FLOOR_LOWER_LIMIT {
+            return cx.goto(ActionId::FREEFALL, 0);
+        }
         if let Some(r) = check_water_jump(cx, prev_buttons, wl) {
             return r;
         }
@@ -292,6 +356,17 @@ impl ActionHandler for SwimmingEnd {
         if cx.state.action_timer >= 15 {
             return cx.goto(id::WATER_ACTION_END, 0);
         }
+        // Decomp `act_swimming_end` line 596: `m->actionTimer++` comes AFTER
+        // the exit/re-chain checks, so they observe the pre-increment value —
+        // the frame-15 exit fires on the 16th tick.
+        // NOTE: the decomp re-chains on A *held* (not pressed) with arg 1,
+        // adds +10 strength only at timer == 7, and resets strength at
+        // timer >= 7 (lines 588-594); those are cancel/strength behavior —
+        // flagged, not ported.
+        cx.state.action_timer += 1;
+        // Decomp line 599: the glide requests MARIO_ANIM_SWIM_PART2 every
+        // tick (before `common_swimming_step`).
+        cx.set_mario_animation(anim_table::MARIO_ANIM_SWIM_PART2);
         if swim_move(cx).is_none() {
             return cx.goto(ActionId::FREEFALL, 0);
         }
@@ -308,10 +383,10 @@ impl ActionHandler for FlutterKick {
         "FlutterKick"
     }
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
-        let wl = match cx.world.water_level(cx.state.pos.x, cx.state.pos.z) {
-            Some(wl) => wl,
-            None => return cx.goto(ActionId::FREEFALL, 0),
-        };
+        let wl = cx.world.find_water_level(cx.state.pos.x, cx.state.pos.z);
+        if wl <= FLOOR_LOWER_LIMIT {
+            return cx.goto(ActionId::FREEFALL, 0);
+        }
         if let Some(r) = check_water_jump(cx, prev_buttons, wl) {
             return r;
         }
@@ -327,6 +402,19 @@ impl ActionHandler for FlutterKick {
         } else {
             (s - 0.15).max(12.0)
         };
+        // Decomp `act_flutter_kick` line 625: the timer is pinned at 1 while
+        // A is held (no increment); the release branch above is the only
+        // other path.
+        // NOTE: the decomp grants the +10 release bonus only when the timer
+        // is still 0 (released on the entry frame, line 617) and resets
+        // strength every tick (line 626); this core keeps its edge-detected
+        // release bonus and entry-only reset — flagged, not ported.
+        cx.state.action_timer = 1;
+        // Decomp lines 627-630: the kick anim only plays below 14.0 speed
+        // (the swim-noise call is sound, skipped).
+        if cx.state.forward_speed < 14.0 {
+            cx.set_mario_animation(anim_table::MARIO_ANIM_FLUTTERKICK);
+        }
         if swim_move(cx).is_none() {
             return cx.goto(ActionId::FREEFALL, 0);
         }
@@ -336,18 +424,15 @@ impl ActionHandler for FlutterKick {
 }
 
 /// WATER_ACTION_END: brief recovery pose after the plunge or the glide.
-/// Speed decays; 10 frames, then treading water. A/B stroke out early.
+/// Speed decays; exits to treading water when the recovery animation ends
+/// (anim-driven, no timer). A/B stroke out early.
 pub struct WaterActionEnd;
 impl ActionHandler for WaterActionEnd {
     fn name(&self) -> &'static str {
         "WaterActionEnd"
     }
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
-        if cx
-            .world
-            .water_level(cx.state.pos.x, cx.state.pos.z)
-            .is_none()
-        {
+        if cx.world.find_water_level(cx.state.pos.x, cx.state.pos.z) <= FLOOR_LOWER_LIMIT {
             return cx.goto(ActionId::FREEFALL, 0);
         }
         if cx.pressed(buttons::A, prev_buttons) || cx.pressed(buttons::B, prev_buttons) {
@@ -355,8 +440,16 @@ impl ActionHandler for WaterActionEnd {
         }
         // spec: swim.action_end_decay (verified: decomp-derived)
         cx.state.forward_speed *= 0.95;
-        // spec: swim.action_end_frames (verified: decomp-derived)
-        if cx.state.action_timer >= 10 {
+        // Decomp `act_water_action_end` (mario_actions_submerged.c:373):
+        // `common_idle_step(m, MARIO_ANIM_WATER_ACTION_END, 0)` requests the
+        // anim (arg 0 -> plain `set_mario_animation`, lines 305-327), and the
+        // exit to WATER_IDLE is anim-driven — `is_anim_at_end` (lines 386-388).
+        // There is NO timer in this action.
+        // NOTE: the decomp discards the `set_mario_action` return and falls
+        // through to `return FALSE`, so its exit is next-tick; this core
+        // keeps the historical same-tick `goto` (flagged, not changed).
+        cx.set_mario_animation(anim_table::MARIO_ANIM_WATER_ACTION_END);
+        if cx.is_anim_at_end() {
             return cx.goto(id::WATER_IDLE, 0);
         }
         // The recovery pose still floats; the jump check is deliberately
