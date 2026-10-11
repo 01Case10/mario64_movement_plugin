@@ -325,10 +325,12 @@ pub fn should_begin_sliding(cx: &mut ActionCx) -> bool {
 }
 
 /// The moving-group preamble: water plunge, stomp/squish (never set in
-/// scope), low-health death, then the per-tick quicksand update.
-/// decomp: `check_common_moving_cancels` (mario_actions_moving.c:1953) plus
-/// the `mario_update_quicksand(m, 0.25f)` step of `mario_execute_moving_action`
-/// (mario_actions_moving.c:1978).
+/// scope), low-health death.
+/// decomp: `check_common_moving_cancels` (mario_actions_moving.c:1953).
+/// NOTE: This is the PURE cancels version. The `mario_update_quicksand`
+/// step is NOT here — it's a separate step in `execute_moving_action`,
+/// matching the decomp's `mario_execute_moving_action` (mario_actions_moving.c:1979-1982).
+/// Handlers must NOT call this directly; use the centralized dispatcher.
 pub fn check_common_moving_cancels(cx: &mut ActionCx) -> Option<ActionResult> {
     if cx.state.pos.y < cx.state.water_level - 100.0 {
         return Some(entry::set_water_plunge_action(cx));
@@ -348,14 +350,40 @@ pub fn check_common_moving_cancels(cx: &mut ActionCx) -> Option<ActionResult> {
         ));
     }
 
+    None
+}
+
+/// decomp: `mario_execute_moving_action` (mario_actions_moving.c:1976).
+/// Centralized dispatcher for all moving actions. Runs the common cancels,
+/// the quicksand update, then delegates to the specific action handler.
+///
+/// This is the SINGLE entry point for moving actions. The individual
+/// handlers must NOT duplicate the cancels or quicksand logic.
+pub fn execute_moving_action(
+    cx: &mut ActionCx,
+    prev_buttons: u16,
+    registry: &super::ActionRegistry,
+) -> ActionResult {
+    // decomp: if (check_common_moving_cancels(m)) return TRUE;
+    if let Some(result) = check_common_moving_cancels(cx) {
+        return result;
+    }
+
+    // decomp: if (mario_update_quicksand(m, 0.25f)) return TRUE;
+    // NOTE: This is a SEPARATE step, not bundled into the cancels.
     // The Rust mario_update_quicksand returns only the drowned bool; the
     // decomp transitions to ACT_QUICKSAND_DEATH internally and the executor
     // returns TRUE (same tick), so mirror that transition here.
     if mario_update_quicksand(&mut cx.state, 0.25) {
-        return Some(cx.goto(ActionId::QUICKSAND_DEATH, 0));
+        return cx.goto(ActionId::QUICKSAND_DEATH, 0);
     }
 
-    None
+    // decomp: switch (m->action) { case ACT_WALKING: cancel = act_walking(m); break; ... }
+    // The registry dispatch replaces the switch.
+    match registry.get(cx.state.action) {
+        Some(handler) => handler.tick(cx, prev_buttons),
+        None => ActionResult::Stay,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -526,10 +554,6 @@ impl ActionHandler for Walking {
     }
 
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
-        if let Some(r) = check_common_moving_cancels(cx) {
-            return r;
-        }
-
         // mario_drop_held_object: no held objects in scope; no-op.
 
         if should_begin_sliding(cx) {
@@ -610,10 +634,6 @@ impl ActionHandler for TurningAround {
     }
 
     fn tick(&self, cx: &mut ActionCx, _prev_buttons: u16) -> ActionResult {
-        if let Some(r) = check_common_moving_cancels(cx) {
-            return r;
-        }
-
         if cx.state.input & f::ABOVE_SLIDE != 0 {
             let id = entry::set_mario_action_moving(cx, ActionId::BEGIN_SLIDING);
             return cx.goto(id, 0);
@@ -689,10 +709,6 @@ impl ActionHandler for FinishTurningAround {
     }
 
     fn tick(&self, cx: &mut ActionCx, _prev_buttons: u16) -> ActionResult {
-        if let Some(r) = check_common_moving_cancels(cx) {
-            return r;
-        }
-
         if cx.state.input & f::ABOVE_SLIDE != 0 {
             let id = entry::set_mario_action_moving(cx, ActionId::BEGIN_SLIDING);
             return cx.goto(id, 0);
@@ -731,10 +747,6 @@ impl ActionHandler for Braking {
     }
 
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
-        if let Some(r) = check_common_moving_cancels(cx) {
-            return r;
-        }
-
         // decomp gates this on !FIRST_PERSON (never set) and an input mask;
         // check_common_action_exits returns None when no bit is set, so the
         // gate is subsumed.
@@ -826,9 +838,6 @@ impl ActionHandler for Decelerating {
     }
 
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
-        if let Some(r) = check_common_moving_cancels(cx) {
-            return r;
-        }
         let slope_class = mario_get_floor_class(&cx.state);
 
         // INPUT_FIRST_PERSON is never set in scope; the decomp's gate around
