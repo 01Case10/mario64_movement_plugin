@@ -1,29 +1,30 @@
 # Legal-review readiness
 
-## IP posture
+## IP posture (current)
 
-- All code is original, written for this project (MIT, (c) 2026 01Case10).
-- No Nintendo code, assets, models, animations, or ROM data are included
-  or referenced.
-- Action IDs that match community-documented values are facts about
-  observable behavior (not copyrightable expression); IDs we could not
-  verify use a provisional bit-30 scheme.
-- The demo uses only primitive Godot meshes (capsule, boxes).
+- Movement code in `crates/stepkit-core` (and the `oracle/` harness) is
+  **derived from the SM64 decompilation** (`n64decomp/sm64`), itself
+  derived from Nintendo's copyrighted game. Policy adopted by the project
+  owner 2026-10-11; see `NOTICE`.
+- The repository's `LICENSE` (MIT, (c) 2026 01Case10) has not been
+  changed, and the MIT claim is **questionable for the derived
+  portions**. The owner must resolve this; this file is not legal advice.
+- No ROMs, models, or extracted assets are in the repo. The demo uses
+  only primitive Godot meshes (capsule, boxes). `demo/bin/*.so` are our
+  compiled Rust code.
+- Neutral naming is still the rule everywhere user-visible: no Nintendo
+  names or marks in crate names, node classes, docs, or product name.
 
 ## What a reviewer should check
 
-1. `spec/constants.toml`: every `wiki` source has page/revision/retrieved.
-2. `tools/check-provenance.py`: passes (95 constants).
-3. `docs/clean-room.md`: process description.
-4. `git log`: phase-by-phase construction, no large unreviewed drops.
-5. No binaries, ROMs, or extracted assets in the repo
-   (`demo/bin/*.so` are our compiled Rust code).
+1. `oracle/DECOMP_COMMIT`: the pinned decomp commit the code derives from.
+2. `NOTICE`: derivation statement present.
+3. The owner's licensing decision for the derived portions (open).
+4. `git log`: port-by-port construction with `oracle diff --all` status
+   recorded in `docs/parity-log.md`.
+5. No binaries, ROMs, or extracted assets in the repo.
 
-## Similarity audit
+## History
 
-`tools/similarity-audit.py` scans for:
-- Long identifier matches against a blocklist of known proprietary symbols
-  (none expected; the blocklist documents what we avoid).
-- Accidental inclusion of binary blobs or base64-encoded assets.
-
-Run: `python3 tools/similarity-audit.py`
+Before 2026-10-11 this project used a clean-room process (no
+decompilation read). That policy was retired; see `docs/clean-room.md`.
