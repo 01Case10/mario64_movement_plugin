@@ -187,7 +187,7 @@ fn mario_update_punch_sequence(cx: &mut ActionCx, prev_buttons: u16) -> bool {
         6 => {
             // decomp: play_mario_action_sound(SOUND_MARIO_PUNCH_HOO) — audio
             // skipped, MARIO_ACTION_SOUND_PLAYED flag is real state.
-            crate::sound::play_mario_action_sound(&mut cx.state);
+            crate::sound::play_mario_action_sound(&mut cx.state, crate::sound::SoundEvent::Punch);
             let anim_frame = cx.set_mario_animation(anim_id::MARIO_ANIM_GROUND_KICK) as i32;
             if anim_frame == 0 {
                 // m->marioBodyState->punchState = (2 << 6) | 6: render, skipped.
@@ -209,7 +209,7 @@ fn mario_update_punch_sequence(cx: &mut ActionCx, prev_buttons: u16) -> bool {
             // actionArg 9. Kept for verbatim fidelity.
             // decomp: play_mario_action_sound(SOUND_MARIO_PUNCH_HOO) — audio
             // skipped, MARIO_ACTION_SOUND_PLAYED flag is real state.
-            crate::sound::play_mario_action_sound(&mut cx.state);
+            crate::sound::play_mario_action_sound(&mut cx.state, crate::sound::SoundEvent::Punch);
             let anim_frame = cx.set_mario_animation(anim_id::MARIO_ANIM_BREAKDANCE) as i32;
             if (2..8).contains(&anim_frame) {
                 // decomp: m->flags |= MARIO_TRIPPING (object.c:135).
