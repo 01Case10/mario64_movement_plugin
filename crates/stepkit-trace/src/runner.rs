@@ -138,6 +138,8 @@ pub fn state_from_frame(f: &TraceFrame) -> CharacterState {
         hurt_counter: f.hurt_counter as u16,
         invinc_timer: f.invinc_timer as u16,
         flags: f.flags,
+        sounds: [None; 4],
+        sound_count: 0,
         terrain_type: stepkit_core::world::terrain_type::GRASS,
         up: Vec3::Y,
         warped: false,

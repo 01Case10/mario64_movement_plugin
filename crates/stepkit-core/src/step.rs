@@ -71,6 +71,8 @@ pub fn tick(
 ) -> (CharacterState, Timeline, Vec<Event>) {
     let mut state = state;
     state.warped = false;
+    // Clear the sound event buffer at the start of each tick.
+    state.sound_count = 0;
     // decomp: gGlobalTimer increments at the start of the tick, before the
     // input and geometry stages (`mario.c:1314` via the game loop).
     state.global_timer = state.global_timer.wrapping_add(1);

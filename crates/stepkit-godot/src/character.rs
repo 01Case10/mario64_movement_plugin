@@ -368,5 +368,14 @@ impl StepChar3D {
                 }
             }
         }
+        // Emit sound events. The Godot side maps these to audio streams.
+        for i in 0..self.state.sound_count {
+            if let Some(event) = self.state.sounds[i as usize] {
+                self.base_mut().emit_signal(
+                    "sound_played",
+                    &[event.name().to_variant()],
+                );
+            }
+        }
     }
 }

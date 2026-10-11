@@ -484,6 +484,13 @@ pub struct CharacterState {
     /// Mario status flags (`MARIO_*`; only bits movement reads are set).
     /// decomp: m->flags
     pub flags: u32,
+    /// Sound events emitted this tick. Drained by the Godot binding for
+    /// audio playback. Cleared at the start of each tick.
+    /// (No decomp equivalent — the decomp plays audio directly.)
+    /// Fixed-size buffer to keep CharacterState Copy.
+    pub sounds: [Option<crate::sound::SoundEvent>; 4],
+    /// Number of valid entries in `sounds`.
+    pub sound_count: u8,
     /// Gravity applied while getting blown (`ACT_GETTING_BLOWN`).
     /// decomp: m->gettingBlownGravity
     pub getting_blown_gravity: f32,
@@ -600,6 +607,8 @@ impl Default for CharacterState {
             hurt_counter: 0,
             invinc_timer: 0,
             flags: 0x11, // MARIO_NORMAL_CAP | MARIO_CAP_ON_HEAD (oracle initial state)
+            sounds: [None; 4],
+            sound_count: 0,
             getting_blown_gravity: 0.0,
             terrain_type: crate::world::terrain_type::GRASS,
             action: ActionId::IDLE,
