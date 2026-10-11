@@ -150,6 +150,10 @@ impl<'a> ActionCx<'a> {
         // decomp: set_mario_action clears the sound-played flags (mario.c:999).
         self.state.flags &= !(crate::state::mario_flags::ACTION_SOUND_PLAYED
             | crate::state::mario_flags::MARIO_SOUND_PLAYED);
+        // decomp: if (!(action & ACT_FLAG_AIR)) flags &= ~MARIO_UNKNOWN_18 (mario.c:1002).
+        if new.0 & crate::state::act_flags::AIR == 0 {
+            self.state.flags &= !crate::state::mario_flags::UNKNOWN_18;
+        }
         let old = self.state.action;
         self.state.prev_action = old;
         self.state.action = new;
