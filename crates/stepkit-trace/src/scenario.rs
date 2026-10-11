@@ -153,6 +153,11 @@ pub struct Scenario {
     pub camera: Camera,
     pub inputs: Vec<InputSeg>,
     pub compare: CompareProfile,
+    /// Decomp area terrain type (TERRAIN_*; 0 = GRASS, 6 = SLIDE). Defaults
+    /// to 0 so older .ron files keep parsing. Passed to the oracle's
+    /// `load_area_terrain`.
+    #[serde(default)]
+    pub terrain: u8,
     /// Semantic assertions checked by the scenario gate. Defaults to empty
     /// so older .ron files keep parsing.
     #[serde(default)]
@@ -183,6 +188,35 @@ impl Scenario {
     /// Total frame count of the scenario.
     pub fn frame_count(&self) -> usize {
         self.expand_inputs().len()
+    }
+
+    /// Validate the scenario's geometry for the decomp oracle (plan §6
+    /// Phase 2, ST-02). The oracle takes `s16` vertices, so every geometry
+    /// coordinate must already be integral and within ±8191; the start
+    /// position and water levels must be too. Terrain must be a small
+    /// TERRAIN_* value. Errors name the offending value. Asserts are not
+    /// geometry and are not checked here.
+    pub fn validate_geometry(&self) -> Result<(), String> {
+        if self.terrain > 15 {
+            return Err(format!(
+                "terrain={} exceeds 15 (decomp TERRAIN_* values are small; TERRAIN_SLIDE=6)",
+                self.terrain
+            ));
+        }
+        let mut mesh = crate::geom::Mesh::default();
+        for g in &self.geometry {
+            match g {
+                Geometry::Box(b) => crate::geom::push_box(&mut mesh, b)?,
+                Geometry::Ramp(r) => crate::geom::push_ramp(&mut mesh, r)?,
+            }
+        }
+        crate::geom::int_coord(self.start.pos.0, "start.pos.x")?;
+        crate::geom::int_coord(self.start.pos.1, "start.pos.y")?;
+        crate::geom::int_coord(self.start.pos.2, "start.pos.z")?;
+        for w in &self.water {
+            crate::geom::int_coord(w.y, "water.y")?;
+        }
+        Ok(())
     }
 }
 
@@ -413,6 +447,7 @@ mod tests {
                 },
             ],
             compare: CompareProfile::GroundDefault,
+            terrain: 0,
             asserts: vec![],
         };
         let frames = s.expand_inputs();
@@ -443,6 +478,7 @@ mod tests {
                 buttons: 0,
             }],
             compare: CompareProfile::GroundDefault,
+            terrain: 0,
             asserts: vec![],
         };
         let text = ron::ser::to_string_pretty(&s, ron::ser::PrettyConfig::default()).unwrap();
@@ -487,7 +523,26 @@ mod tests {
             slide_over_cap: 0,
             swim_strength: 0,
             anim_slot: String::new(),
+            timeline_frame: 0,
+            anim_id: -1,
             anim_frame: 0,
+            anim_accel: 0,
+            anim_frame_accel_assist: 0,
+            slide_yaw: 0,
+            angle_vel_x: 0,
+            angle_vel_y: 0,
+            angle_vel_z: 0,
+            intended_yaw: 0,
+            intended_mag: 0.0,
+            input: 0,
+            floor_angle: 0,
+            floor_normal_y: 0.0,
+            floor_type: 0,
+            double_jump_timer: 0,
+            water_level: 0.0,
+            hurt_counter: 0,
+            invinc_timer: 0,
+            flags: 0,
         }
     }
 
@@ -505,6 +560,7 @@ mod tests {
             camera: Camera::Fixed { yaw_deg: 0.0 },
             inputs: vec![],
             compare: CompareProfile::GroundDefault,
+            terrain: 0,
             asserts,
         }
     }
@@ -626,7 +682,7 @@ mod tests {
         use stepkit_core::actions::ActionRegistry;
         let reg = ActionRegistry::sm64_style();
         let s = scenario_with(vec![Assertion::ActionEntryVelY {
-            action: "SingleJump".into(),
+            action: "Jump".into(),
             expected: 42.0,
             tol: 1.0,
         }]);

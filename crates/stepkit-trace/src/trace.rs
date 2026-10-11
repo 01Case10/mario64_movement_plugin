@@ -43,7 +43,50 @@ pub struct TraceFrame {
     pub slide_over_cap: u8,
     pub swim_strength: u16,
     pub anim_slot: String,
-    pub anim_frame: u32,
+    pub timeline_frame: u32,
+    // ---- AN-01: decomp animation state, mirroring the oracle CSV schema
+    // (plan §7.3). `#[serde(default)]` keeps old trace CSVs readable.
+    #[serde(default)]
+    pub anim_id: i32,
+    #[serde(default)]
+    pub anim_frame: i32,
+    #[serde(default)]
+    pub anim_accel: i32,
+    #[serde(default)]
+    pub anim_frame_accel_assist: i32,
+    // ---- Phase 3 (FD-05): decomp MarioState fields, mirroring the oracle
+    // CSV schema (plan §7.3). `#[serde(default)]` keeps old trace CSVs
+    // readable.
+    #[serde(default)]
+    pub slide_yaw: i16,
+    #[serde(default)]
+    pub angle_vel_x: i16,
+    #[serde(default)]
+    pub angle_vel_y: i16,
+    #[serde(default)]
+    pub angle_vel_z: i16,
+    #[serde(default)]
+    pub intended_yaw: i16,
+    #[serde(default)]
+    pub intended_mag: f32,
+    #[serde(default)]
+    pub input: u32,
+    #[serde(default)]
+    pub floor_angle: i16,
+    #[serde(default)]
+    pub floor_normal_y: f32,
+    #[serde(default)]
+    pub floor_type: i32,
+    #[serde(default)]
+    pub double_jump_timer: u32,
+    #[serde(default)]
+    pub water_level: f32,
+    #[serde(default)]
+    pub hurt_counter: i32,
+    #[serde(default)]
+    pub invinc_timer: i32,
+    #[serde(default)]
+    pub flags: u32,
 }
 
 /// JSON sidecar: scenario id, oracle/build provenance, tool versions.
@@ -121,7 +164,26 @@ mod tests {
             slide_over_cap: 0,
             swim_strength: 160,
             anim_slot: "idle".into(),
+            timeline_frame: 0,
+            anim_id: -1,
             anim_frame: 0,
+            anim_accel: 0,
+            anim_frame_accel_assist: 0,
+            slide_yaw: 0,
+            angle_vel_x: 0,
+            angle_vel_y: 0,
+            angle_vel_z: 0,
+            intended_yaw: 0,
+            intended_mag: 0.0,
+            input: 0,
+            floor_angle: 0,
+            floor_normal_y: 0.0,
+            floor_type: 0,
+            double_jump_timer: 0,
+            water_level: 0.0,
+            hurt_counter: 0,
+            invinc_timer: 0,
+            flags: 0,
         }
     }
 
