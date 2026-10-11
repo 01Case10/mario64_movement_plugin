@@ -64,7 +64,7 @@ fn play_metal_water_jumping_sound(cx: &mut ActionCx, landing: bool) {
     // the flag is real state and is kept via the sound stub. (`landing` only
     // selects which sound plays, so it is dropped along with the audio.)
     let _ = landing;
-    crate::sound::play_sound_if_no_flag(&mut cx.state, mario_flags::ACTION_SOUND_PLAYED);
+    crate::sound::play_sound_if_no_flag(&mut cx.state, crate::sound::SoundEvent::Jump, mario_flags::ACTION_SOUND_PLAYED);
 }
 
 /// decomp: src/game/mario_actions_submerged.c:1109 (`play_metal_water_walking_sound`).
