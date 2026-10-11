@@ -61,6 +61,12 @@ pub mod mario_flags {
     pub const ACTION_SOUND_PLAYED: u32 = 0x00010000;
     pub const MARIO_SOUND_PLAYED: u32 = 0x00020000;
     pub const UNKNOWN_30: u32 = 0x40000000;
+    /// decomp: `MARIO_PUNCHING` (sm64.h:128); set by `mario_update_punch_sequence`.
+    pub const PUNCHING: u32 = 0x00100000;
+    /// decomp: `MARIO_KICKING` (sm64.h:129); set by `mario_update_punch_sequence`.
+    pub const KICKING: u32 = 0x00200000;
+    /// decomp: `MARIO_TRIPPING` (sm64.h:130); set by `mario_update_punch_sequence`.
+    pub const TRIPPING: u32 = 0x00400000;
 }
 
 /// Action identifiers. The IDs are the decomp's `ACT_*` values
