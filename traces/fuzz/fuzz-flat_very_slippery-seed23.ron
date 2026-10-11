@@ -1,0 +1,239 @@
+(
+    id: "fuzz-flat_very_slippery-seed23",
+    tags: [
+        "fuzz",
+        "ground",
+        "fuzz",
+    ],
+    geometry: [
+        Box((
+            min: (-4000.0, -100.0, -4000.0),
+            max: (4000.0, 0.0, 4000.0),
+            kind: 3,
+        )),
+    ],
+    water: [],
+    start: (
+        pos: (0.0, 0.0, 0.0),
+        yaw_deg: 0.0,
+        action: "Idle",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        Press(
+            stick: (0, -117),
+            buttons: 0,
+        ),
+        Hold(
+            frames: 2,
+            stick: (-80, 7),
+            buttons: 4,
+        ),
+        Press(
+            stick: (0, -8),
+            buttons: 4,
+        ),
+        Press(
+            stick: (-8, 0),
+            buttons: 6,
+        ),
+        Press(
+            stick: (16, 0),
+            buttons: 2,
+        ),
+        Press(
+            stick: (-8, -60),
+            buttons: 2,
+        ),
+        Press(
+            stick: (0, 0),
+            buttons: 2,
+        ),
+        Press(
+            stick: (16, -7),
+            buttons: 2,
+        ),
+        Press(
+            stick: (-64, 40),
+            buttons: 2,
+        ),
+        Press(
+            stick: (-64, 0),
+            buttons: 2,
+        ),
+        Press(
+            stick: (8, 25),
+            buttons: 2,
+        ),
+        Press(
+            stick: (0, 0),
+            buttons: 2,
+        ),
+        Press(
+            stick: (0, -8),
+            buttons: 6,
+        ),
+        Press(
+            stick: (127, 16),
+            buttons: 4,
+        ),
+        Press(
+            stick: (-127, -16),
+            buttons: 4,
+        ),
+        Hold(
+            frames: 3,
+            stick: (0, 0),
+            buttons: 4,
+        ),
+        Press(
+            stick: (-127, 0),
+            buttons: 5,
+        ),
+        Press(
+            stick: (92, -16),
+            buttons: 5,
+        ),
+        Press(
+            stick: (-64, 80),
+            buttons: 5,
+        ),
+        Press(
+            stick: (7, 0),
+            buttons: 5,
+        ),
+        Press(
+            stick: (-8, 0),
+            buttons: 5,
+        ),
+        Press(
+            stick: (0, 11),
+            buttons: 4,
+        ),
+        Press(
+            stick: (0, 0),
+            buttons: 4,
+        ),
+        Press(
+            stick: (0, -16),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, -64),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, -1),
+            buttons: 0,
+        ),
+        Press(
+            stick: (80, 80),
+            buttons: 2,
+        ),
+        Press(
+            stick: (7, -77),
+            buttons: 2,
+        ),
+        Press(
+            stick: (-8, 0),
+            buttons: 2,
+        ),
+        Press(
+            stick: (0, 0),
+            buttons: 2,
+        ),
+        Press(
+            stick: (0, 60),
+            buttons: 2,
+        ),
+        Press(
+            stick: (0, 82),
+            buttons: 2,
+        ),
+        Press(
+            stick: (0, 40),
+            buttons: 2,
+        ),
+        Press(
+            stick: (16, -5),
+            buttons: 2,
+        ),
+        Press(
+            stick: (0, 0),
+            buttons: 2,
+        ),
+        Press(
+            stick: (16, -80),
+            buttons: 2,
+        ),
+        Press(
+            stick: (-33, -80),
+            buttons: 2,
+        ),
+        Press(
+            stick: (80, 13),
+            buttons: 2,
+        ),
+        Press(
+            stick: (7, -103),
+            buttons: 2,
+        ),
+        Press(
+            stick: (0, 0),
+            buttons: 2,
+        ),
+        Press(
+            stick: (-64, 123),
+            buttons: 2,
+        ),
+        Press(
+            stick: (0, -7),
+            buttons: 2,
+        ),
+        Press(
+            stick: (-89, 0),
+            buttons: 2,
+        ),
+        Press(
+            stick: (-50, -125),
+            buttons: 2,
+        ),
+        Press(
+            stick: (123, 8),
+            buttons: 2,
+        ),
+        Press(
+            stick: (-20, 0),
+            buttons: 0,
+        ),
+        Press(
+            stick: (-17, 0),
+            buttons: 0,
+        ),
+        Press(
+            stick: (-80, 25),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, 0),
+            buttons: 0,
+        ),
+        Press(
+            stick: (-118, 0),
+            buttons: 0,
+        ),
+        Press(
+            stick: (40, 22),
+            buttons: 0,
+        ),
+        Press(
+            stick: (7, 0),
+            buttons: 0,
+        ),
+    ],
+    compare: GroundDefault,
+    terrain: 0,
+    asserts: [],
+)

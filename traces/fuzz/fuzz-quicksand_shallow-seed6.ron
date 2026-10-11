@@ -1,0 +1,53 @@
+(
+    id: "fuzz-quicksand_shallow-seed6",
+    tags: [
+        "fuzz",
+        "ground",
+        "fuzz",
+    ],
+    geometry: [
+        Box((
+            min: (-4000.0, -100.0, -4000.0),
+            max: (4000.0, 0.0, 4000.0),
+            kind: 4,
+        )),
+    ],
+    water: [],
+    start: (
+        pos: (0.0, 0.0, 0.0),
+        yaw_deg: 0.0,
+        action: "Idle",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        Press(
+            stick: (0, 80),
+            buttons: 0,
+        ),
+        Press(
+            stick: (-80, 13),
+            buttons: 0,
+        ),
+        Press(
+            stick: (64, -53),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, -121),
+            buttons: 0,
+        ),
+        Press(
+            stick: (-7, 10),
+            buttons: 4,
+        ),
+        Press(
+            stick: (0, 64),
+            buttons: 5,
+        ),
+    ],
+    compare: GroundDefault,
+    terrain: 0,
+    asserts: [],
+)

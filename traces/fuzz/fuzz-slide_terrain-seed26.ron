@@ -1,0 +1,37 @@
+(
+    id: "fuzz-slide_terrain-seed26",
+    tags: [
+        "fuzz",
+        "ground",
+        "fuzz",
+    ],
+    geometry: [
+        Box((
+            min: (-4000.0, -100.0, -4000.0),
+            max: (4000.0, 0.0, 4000.0),
+            kind: 0,
+        )),
+    ],
+    water: [],
+    start: (
+        pos: (0.0, 0.0, 0.0),
+        yaw_deg: 0.0,
+        action: "Idle",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        Press(
+            stick: (0, 0),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, -64),
+            buttons: 0,
+        ),
+    ],
+    compare: GroundDefault,
+    terrain: 6,
+    asserts: [],
+)
