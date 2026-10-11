@@ -5,6 +5,8 @@
 //! writes Markdown + JSON divergence reports.
 
 pub mod compare;
+pub mod geom;
+pub mod oracle;
 pub mod pack;
 pub mod runner;
 pub mod scenario;

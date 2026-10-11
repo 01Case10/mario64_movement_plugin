@@ -59,7 +59,7 @@ pub fn pack_frames(frames: &[TraceFrame]) -> Vec<u8> {
         let slot = f.anim_slot.as_bytes();
         out.push(slot.len().min(255) as u8);
         out.extend_from_slice(&slot[..slot.len().min(255)]);
-        out.extend_from_slice(&f.anim_frame.to_le_bytes());
+        out.extend_from_slice(&f.timeline_frame.to_le_bytes());
     }
     out
 }
@@ -141,7 +141,7 @@ pub fn unpack_frames(data: &[u8]) -> Option<Vec<TraceFrame>> {
             .ok()?
             .to_string();
         pos += slot_len;
-        let anim_frame = read_u32(data, &mut pos)?;
+        let timeline_frame = read_u32(data, &mut pos)?;
         frames.push(TraceFrame {
             frame,
             stick_x,
@@ -178,7 +178,26 @@ pub fn unpack_frames(data: &[u8]) -> Option<Vec<TraceFrame>> {
             slide_over_cap,
             swim_strength,
             anim_slot: slot,
-            anim_frame,
+            timeline_frame,
+            anim_id: -1,
+            anim_frame: 0,
+            anim_accel: 0,
+            anim_frame_accel_assist: 0,
+            slide_yaw: 0,
+            angle_vel_x: 0,
+            angle_vel_y: 0,
+            angle_vel_z: 0,
+            intended_yaw: 0,
+            intended_mag: 0.0,
+            input: 0,
+            floor_angle: 0,
+            floor_normal_y: 0.0,
+            floor_type: 0,
+            double_jump_timer: 0,
+            water_level: 0.0,
+            hurt_counter: 0,
+            invinc_timer: 0,
+            flags: 0,
         });
     }
     Some(frames)
@@ -225,7 +244,26 @@ mod tests {
             slide_over_cap: 0,
             swim_strength: 160,
             anim_slot: "walk_cycle".into(),
-            anim_frame: 9,
+            timeline_frame: 9,
+            anim_id: -1,
+            anim_frame: 0,
+            anim_accel: 0,
+            anim_frame_accel_assist: 0,
+            slide_yaw: 0,
+            angle_vel_x: 0,
+            angle_vel_y: 0,
+            angle_vel_z: 0,
+            intended_yaw: 0,
+            intended_mag: 0.0,
+            input: 0,
+            floor_angle: 0,
+            floor_normal_y: 0.0,
+            floor_type: 0,
+            double_jump_timer: 0,
+            water_level: 0.0,
+            hurt_counter: 0,
+            invinc_timer: 0,
+            flags: 0,
         }
     }
 

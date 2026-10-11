@@ -4,13 +4,20 @@
 use godot::classes::ArrayMesh;
 use godot::prelude::*;
 use stepkit_core::surface::SurfaceWorld;
-use stepkit_core::world::SurfaceKind;
+use stepkit_core::world::surface_type;
 
-fn kind_of(kind: i64) -> SurfaceKind {
+/// Map a Godot-side surface `kind` to a decomp `SURFACE_*` type
+/// (same table as the scenario format: 0 = default).
+fn kind_of(kind: i64) -> u16 {
     match kind {
-        1 => SurfaceKind::Slide,
-        2 => SurfaceKind::Quicksand,
-        _ => SurfaceKind::Default,
+        1 => surface_type::SLIPPERY,
+        2 => surface_type::NOT_SLIPPERY,
+        3 => surface_type::VERY_SLIPPERY,
+        4 => surface_type::SHALLOW_QUICKSAND,
+        5 => surface_type::DEEP_QUICKSAND,
+        6 => surface_type::MOVING_QUICKSAND,
+        7 => surface_type::SLOW,
+        _ => surface_type::DEFAULT,
     }
 }
 
@@ -89,7 +96,7 @@ impl StepWorld3D {
                 let a = xform * tri[0];
                 let b = xform * tri[1];
                 let c = xform * tri[2];
-                self.world.add_triangle(
+                self.world.add_triangle_f(
                     glam::Vec3::new(a.x * s, a.y * s, a.z * s),
                     glam::Vec3::new(b.x * s, b.y * s, b.z * s),
                     glam::Vec3::new(c.x * s, c.y * s, c.z * s),
@@ -104,7 +111,7 @@ impl StepWorld3D {
                 let a = xform * v[t[0] as usize];
                 let b = xform * v[t[1] as usize];
                 let c = xform * v[t[2] as usize];
-                self.world.add_triangle(
+                self.world.add_triangle_f(
                     glam::Vec3::new(a.x * s, a.y * s, a.z * s),
                     glam::Vec3::new(b.x * s, b.y * s, b.z * s),
                     glam::Vec3::new(c.x * s, c.y * s, c.z * s),
