@@ -494,7 +494,10 @@ impl ActionHandler for CrouchSlide {
 
         if cx.pressed(buttons::B, prev_buttons) {
             if cx.state.forward_speed >= 10.0 {
-                return cx.goto(ActionId::SLIDE_KICK, 0);
+                // decomp: set_mario_action ACT_SLIDE_KICK case (mario.c:875)
+                // sets vel.y=12 and forwardVel=max(32).
+                let id = super::entry::set_mario_action_airborne(cx, ActionId::SLIDE_KICK, 0);
+                return cx.goto(id, 0);
             } else {
                 return cx.goto(ActionId::MOVE_PUNCHING, 0x0009);
             }
