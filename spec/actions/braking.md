@@ -1,4 +1,4 @@
-# Action: Braking (ID 0x40000444 PROVISIONAL, group moving)
+# Action: Braking (ID 0x04000444, group moving)
 
 > No community page documents Braking's hex/id; the ID is stepkit-provisional
 > (bit 30 set).

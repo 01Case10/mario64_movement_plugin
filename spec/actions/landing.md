@@ -1,4 +1,4 @@
-# Action: Landing (ID 0x40000446 PROVISIONAL, group stationary)
+# Action: Landing (ID 0x04000446, group stationary)
 
 > No community page documents Landing's hex/id; the ID is stepkit-provisional
 > (bit 30 set).

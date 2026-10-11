@@ -1,12 +1,20 @@
 #!/bin/sh
-# Regenerate golden traces from the current core. ONLY run this explicitly;
-# review the resulting diff and add a note to spec/provenance before commit.
-# Nothing regenerates automatically.
+# Regenerate golden traces from the native decomp oracle. ONLY run this
+# explicitly; review the resulting diff before commit. Nothing regenerates
+# automatically.
+#
+# Goldens are oracle-produced reference outputs in the §7.3 schema
+# (see docs/decomp-parity-plan.md §7.3); the old plugin-schema goldens live
+# in traces/legacy-plugin-golden/ and are kept for reference only.
 set -e
 cd "$(dirname "$0")/.."
 cargo build -p stepkit-cli 2>/dev/null
+mkdir -p traces/golden
+decomp_commit=$(cat oracle/DECOMP_COMMIT)
+produced_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 for s in traces/scenarios/*.ron; do
   id=$(basename "$s" .ron)
-  ./target/debug/stepkit trace run --scenario "$s" --out "traces/golden/$id.csv"
+  ./target/debug/stepkit oracle run --scenario "$s" --out "traces/golden/$id.csv"
+  printf '{\n  "scenario_id": "%s",\n  "produced_by": "oracle",\n  "schema_version": 1,\n  "decomp_commit": "%s",\n  "produced_at": "%s"\n}\n' "$id" "$decomp_commit" "$produced_at" > "traces/golden/$id.csv.sidecar.json"
 done
-echo "regenerated $(ls traces/golden/*.csv | wc -l) golden traces"
+echo "regenerated $(ls traces/golden/*.csv | wc -l) golden traces from oracle (decomp $decomp_commit)"

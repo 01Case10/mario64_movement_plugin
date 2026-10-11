@@ -1,0 +1,113 @@
+(
+    id: "fuzz-flat_default-seed0",
+    tags: [
+        "fuzz",
+        "ground",
+        "fuzz",
+    ],
+    geometry: [
+        Box((
+            min: (-4000.0, -100.0, -4000.0),
+            max: (4000.0, 0.0, 4000.0),
+            kind: 0,
+        )),
+    ],
+    water: [],
+    start: (
+        pos: (0.0, 0.0, 0.0),
+        yaw_deg: 0.0,
+        action: "Idle",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        Press(
+            stick: (0, 121),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, -80),
+            buttons: 0,
+        ),
+        Press(
+            stick: (33, 0),
+            buttons: 0,
+        ),
+        Press(
+            stick: (127, 0),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, 0),
+            buttons: 0,
+        ),
+        Press(
+            stick: (-7, 16),
+            buttons: 0,
+        ),
+        Press(
+            stick: (-127, -127),
+            buttons: 0,
+        ),
+        Press(
+            stick: (63, 0),
+            buttons: 0,
+        ),
+        Press(
+            stick: (-64, -127),
+            buttons: 0,
+        ),
+        Press(
+            stick: (-127, -25),
+            buttons: 0,
+        ),
+        Press(
+            stick: (-80, 0),
+            buttons: 0,
+        ),
+        Press(
+            stick: (-125, 7),
+            buttons: 4,
+        ),
+        Press(
+            stick: (105, 87),
+            buttons: 4,
+        ),
+        Press(
+            stick: (-80, -36),
+            buttons: 4,
+        ),
+        Press(
+            stick: (-64, 0),
+            buttons: 4,
+        ),
+        Press(
+            stick: (26, 0),
+            buttons: 4,
+        ),
+        Press(
+            stick: (-60, 8),
+            buttons: 4,
+        ),
+        Press(
+            stick: (0, 80),
+            buttons: 4,
+        ),
+        Press(
+            stick: (-64, 0),
+            buttons: 4,
+        ),
+        Press(
+            stick: (0, 0),
+            buttons: 4,
+        ),
+        Press(
+            stick: (16, 35),
+            buttons: 6,
+        ),
+    ],
+    compare: GroundDefault,
+    terrain: 0,
+    asserts: [],
+)

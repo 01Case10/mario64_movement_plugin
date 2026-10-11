@@ -1,4 +1,4 @@
-# Action: Crawl (ID 0x40000011 PROVISIONAL, group moving)
+# Action: Crawl (ID 0x04008448 (ACT_CRAWLING), group moving)
 
 > No community page documents Crawl's hex/id; the ID is stepkit-provisional
 > (bit 30 set). All movement numbers (verify).

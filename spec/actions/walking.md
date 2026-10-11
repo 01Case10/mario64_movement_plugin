@@ -1,4 +1,4 @@
-# Action: Walking (ID 0x40000440 PROVISIONAL, group moving)
+# Action: Walking (ID 0x04000440 (ACT_WALKING), group moving)
 
 > The community wiki page for Walking lists its hex/id as "todo", so the ID
 > above is stepkit-provisional (bit 30 set) and will be replaced when the

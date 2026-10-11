@@ -1,4 +1,4 @@
-# Action: Air Knockback (ID 0x400008B1 PROVISIONAL, group airborne)
+# Action: Air Knockback (ID 0x000008B1, group airborne)
 
 > No community page documents this hex/id; the ID is stepkit-provisional
 > (bit 30 set). The dive->bonk->knockback chain is documented

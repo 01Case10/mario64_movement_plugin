@@ -1,4 +1,4 @@
-# Action: Freefall (ID 0x4000088C PROVISIONAL, group airborne)
+# Action: Freefall (ID 0x0100088C (ACT_FREEFALL), group airborne)
 
 > No community page documents Freefall's hex/id; the ID is stepkit-provisional
 > (bit 30 set). (Note: 0x01000882 is Triple Jump per wiki:Triple Jump@19300.)

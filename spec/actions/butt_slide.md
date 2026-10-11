@@ -1,4 +1,4 @@
-# Action: Butt Slide (ID 0x40000447 PROVISIONAL, group moving)
+# Action: Butt Slide (ID 0x04000447, group moving)
 
 > No community page documents Butt Slide's hex/id; the ID is
 > stepkit-provisional (bit 30 set). All numbers (verify).

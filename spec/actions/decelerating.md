@@ -1,4 +1,4 @@
-# Action: Decelerating (ID 0x40000445 PROVISIONAL, group moving)
+# Action: Decelerating (ID 0x04000445 (ACT_BRAKING), group moving)
 
 > No community page documents Decelerating's hex/id; the ID is
 > stepkit-provisional (bit 30 set).

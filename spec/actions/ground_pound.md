@@ -1,4 +1,4 @@
-# Action: Ground Pound (ID 0x400008A8 PROVISIONAL, group airborne)
+# Action: Ground Pound (ID 0x008008A9 (ACT_GROUND_POUND), group airborne)
 
 > No community page documents Ground Pound's hex/id; the ID is
 > stepkit-provisional (bit 30 set).

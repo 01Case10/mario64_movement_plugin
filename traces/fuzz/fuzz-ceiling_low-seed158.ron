@@ -1,0 +1,155 @@
+(
+    id: "fuzz-ceiling_low-seed158",
+    tags: [
+        "fuzz",
+        "air",
+        "ceiling",
+        "fuzz",
+    ],
+    geometry: [
+        Box((
+            min: (-4000.0, -100.0, -4000.0),
+            max: (4000.0, 0.0, 4000.0),
+            kind: 0,
+        )),
+        Box((
+            min: (-2000.0, 150.0, -2000.0),
+            max: (2000.0, 250.0, 2000.0),
+            kind: 0,
+        )),
+    ],
+    water: [],
+    start: (
+        pos: (0.0, 0.0, 0.0),
+        yaw_deg: 0.0,
+        action: "Idle",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        Press(
+            stick: (7, -23),
+            buttons: 0,
+        ),
+        Press(
+            stick: (16, 0),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, 0),
+            buttons: 0,
+        ),
+        Press(
+            stick: (7, -80),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, 8),
+            buttons: 0,
+        ),
+        Press(
+            stick: (19, 0),
+            buttons: 0,
+        ),
+        Press(
+            stick: (-127, -127),
+            buttons: 0,
+        ),
+        Press(
+            stick: (-87, -62),
+            buttons: 0,
+        ),
+        Press(
+            stick: (16, -36),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, -30),
+            buttons: 0,
+        ),
+        Press(
+            stick: (-49, -16),
+            buttons: 0,
+        ),
+        Press(
+            stick: (127, 0),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, -40),
+            buttons: 0,
+        ),
+        Press(
+            stick: (-115, 0),
+            buttons: 0,
+        ),
+        Press(
+            stick: (-126, -127),
+            buttons: 0,
+        ),
+        Press(
+            stick: (16, 91),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, 0),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, 120),
+            buttons: 0,
+        ),
+        Press(
+            stick: (-2, 0),
+            buttons: 1,
+        ),
+        Press(
+            stick: (16, 56),
+            buttons: 7,
+        ),
+        Press(
+            stick: (-61, 0),
+            buttons: 7,
+        ),
+        Press(
+            stick: (-80, 50),
+            buttons: 7,
+        ),
+        Press(
+            stick: (16, -92),
+            buttons: 7,
+        ),
+        Press(
+            stick: (0, 7),
+            buttons: 6,
+        ),
+        Press(
+            stick: (-127, 0),
+            buttons: 6,
+        ),
+        Press(
+            stick: (0, 69),
+            buttons: 7,
+        ),
+        Press(
+            stick: (-73, 40),
+            buttons: 7,
+        ),
+        Press(
+            stick: (0, -120),
+            buttons: 7,
+        ),
+        Press(
+            stick: (-7, 127),
+            buttons: 7,
+        ),
+        Press(
+            stick: (0, 0),
+            buttons: 7,
+        ),
+    ],
+    compare: AirDefault,
+    terrain: 0,
+    asserts: [],
+)

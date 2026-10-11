@@ -5,8 +5,14 @@
 - `scenarios/` -- 20 scenario files (RON): our own geometry, start states,
   and input sequences. Ground sweeps, slopes, ledges, walls, and the jump
   catalog live here.
-- `golden/` -- numeric golden traces (CSV + JSON sidecar). Populated by
-  `tools/regen-golden` once the core implements the actions.
+- `golden/` -- numeric golden traces (CSV + JSON sidecar) generated from the
+  **native decomp oracle** via `tools/regen-golden` in the §7.3 state schema
+  (see `docs/decomp-parity-plan.md` §7.3). These are the reference outputs
+  the plugin is measured against by `tools/parity-gate.sh`
+  (`stepkit oracle diff --all`).
+- `legacy-plugin-golden/` -- pre-Phase-2 golden traces recorded from the
+  plugin's own simulation (the old `stepkit trace run` schema). Kept for
+  reference only; not used by any gate.
 - `public-anchors/` -- small CSVs transcribed from public wiki pages, each
   citing page title and revision. The lowest-risk test data; built first.
 - `baselines/` -- replay baselines (`replays.toml`) for L3.
@@ -20,11 +26,11 @@ Phase 1 delivered the machinery; the core is still a stub, so:
   (run -> CSV -> diff) in both free-running and teacher-forced modes
   (40/40 checks pass; the diff was also verified to catch an injected
   divergence).
-- `golden/` holds 20 numeric traces recorded from the Phase 2 core via
-  `tools/regen-golden` (reviewed before commit). They are self-consistency
-  baselines: all 20 scenarios pass `trace diff` in free-running and
-  teacher-forced modes (40/40). Cross-checking against an independent oracle
-  awaits the private oracle runner (Phase 1's open item).
+- `golden/` holds oracle-generated traces (`tools/regen-golden`, §7.3 schema,
+  sidecars record the producing oracle + pinned decomp commit). Plugin-vs-oracle
+  parity is checked by `tools/parity-gate.sh` (`stepkit oracle diff --all`).
+  `legacy-plugin-golden/` keeps the pre-Phase-2 plugin-schema traces for
+  reference.
 - Nothing regenerates automatically.
 - The private oracle runner (needs your ROM + libsm64 build) lives outside
   this repo under `oracle/` (gitignored). Only scenario definitions and
@@ -33,6 +39,9 @@ Phase 1 delivered the machinery; the core is still a stub, so:
 ## Commands
 
 ```sh
+# NOTE: golden/ is now oracle-schema CSVs; use `stepkit oracle diff --all`
+# (tools/parity-gate.sh) for plugin-vs-oracle parity. `trace diff --golden`
+# below works only against legacy-plugin-golden/ (old plugin schema).
 stepkit trace diff --scenario traces/scenarios/walk_accel_mag80_flat.ron \
                    --golden traces/golden/walk_accel_mag80_flat.csv --mode free
 stepkit trace diff --all --mode teacher-forced --report out/divergence.md  # planned

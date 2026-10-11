@@ -1,4 +1,4 @@
-# Action: Crouch (ID 0x40000010 PROVISIONAL, group stationary)
+# Action: Crouch (ID 0x0C008220 (ACT_CROUCHING), group stationary)
 
 > No community page documents Crouch's hex/id; the ID is stepkit-provisional
 > (bit 30 set).
