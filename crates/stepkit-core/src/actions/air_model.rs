@@ -207,8 +207,11 @@ pub fn common_air_action_step(
                         }
                         let id =
                             super::entry::set_mario_action_airborne(cx, ActionId::SOFT_BONK, 0);
-                        // decomp: `return set_mario_action(...)` → TRUE → same-tick.
-                        Some(cx.goto(id, 0))
+                        // decomp: `return set_mario_action(...)` — the return
+                        // value (TRUE) is DISCARDED by the caller
+                        // (act_triple_jump etc. return FALSE), so the new
+                        // action starts next tick, not same-tick.
+                        Some(cx.goto_next(id, 0))
                     }
                 }
             } else {
