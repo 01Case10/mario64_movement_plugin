@@ -133,14 +133,24 @@ pub fn tick(
         // cancels and far-fall sound before delegating to the handler.
         // This is the SINGLE place for airborne common logic — handlers must
         // not duplicate it.
-        let is_airborne =
-            cx.state.action.0 & crate::state::act_flags::AIR != 0;
+        //
+        // Moving actions go through the centralized `execute_moving_action`
+        // dispatcher (mario_actions_moving.c:1976), which runs the common
+        // cancels and quicksand update before delegating to the handler.
+        // This is the SINGLE place for moving common logic — handlers must
+        // not duplicate it.
+        let action_flags = cx.state.action.0;
+        let is_airborne = action_flags & crate::state::act_flags::AIR != 0;
+        let is_moving = !is_airborne
+            && action_flags & crate::state::act_flags::MOVING != 0;
         let result = if is_airborne {
             crate::actions::air_model::execute_airborne_action(
                 &mut cx,
                 prev_buttons,
                 registry,
             )
+        } else if is_moving {
+            crate::actions::walk::execute_moving_action(&mut cx, prev_buttons, registry)
         } else {
             match registry.get(cx.state.action) {
                 Some(handler) => handler.tick(&mut cx, prev_buttons),
