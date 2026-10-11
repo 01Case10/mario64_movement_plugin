@@ -129,9 +129,6 @@ macro_rules! ground_kb_handler {
                 $label
             }
             fn tick(&self, cx: &mut ActionCx, _prev_buttons: u16) -> ActionResult {
-                if let Some(r) = moving_preamble(cx) {
-                    return r;
-                }
                 let action_arg = cx.state.action_arg as i32;
                 let (_anim_frame, result) =
                     common_ground_knockback_action(cx, $anim, $arg2, $arg3, action_arg);
@@ -190,9 +187,6 @@ impl ActionHandler for HardBackwardGroundKb {
         "HardBackwardGroundKb"
     }
     fn tick(&self, cx: &mut ActionCx, _prev_buttons: u16) -> ActionResult {
-        if let Some(r) = moving_preamble(cx) {
-            return r;
-        }
         let action_arg = cx.state.action_arg as i32;
         let (anim_frame, result) = common_ground_knockback_action(
             cx,
@@ -222,9 +216,6 @@ impl ActionHandler for HardForwardGroundKb {
         "HardForwardGroundKb"
     }
     fn tick(&self, cx: &mut ActionCx, _prev_buttons: u16) -> ActionResult {
-        if let Some(r) = moving_preamble(cx) {
-            return r;
-        }
         let action_arg = cx.state.action_arg as i32;
         let (anim_frame, result) = common_ground_knockback_action(
             cx,
@@ -251,9 +242,6 @@ impl ActionHandler for GroundBonk {
         "GroundBonk"
     }
     fn tick(&self, cx: &mut ActionCx, _prev_buttons: u16) -> ActionResult {
-        if let Some(r) = moving_preamble(cx) {
-            return r;
-        }
         let action_arg = cx.state.action_arg as i32;
         // decomp: `common_ground_knockback_action(m, MARIO_ANIM_GROUND_BONK, 32, TRUE, m->actionArg);`
         let (anim_frame, result) =
