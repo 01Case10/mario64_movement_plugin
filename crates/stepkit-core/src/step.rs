@@ -127,9 +127,25 @@ pub fn tick(
         // FD-06: no automatic timer increment. Each action manages
         // `action_timer` itself, exactly like the decomp (most actions only
         // increment on specific branches; e.g. `act_idle` never increments).
-        let result = match registry.get(cx.state.action) {
-            Some(handler) => handler.tick(&mut cx, prev_buttons),
-            None => ActionResult::Stay, // unknown action: hold state (defensive)
+        //
+        // Airborne actions go through the centralized `execute_airborne_action`
+        // dispatcher (mario_actions_airborne.c:2063), which runs the common
+        // cancels and far-fall sound before delegating to the handler.
+        // This is the SINGLE place for airborne common logic — handlers must
+        // not duplicate it.
+        let is_airborne =
+            cx.state.action.0 & crate::state::act_flags::AIR != 0;
+        let result = if is_airborne {
+            crate::actions::air_model::execute_airborne_action(
+                &mut cx,
+                prev_buttons,
+                registry,
+            )
+        } else {
+            match registry.get(cx.state.action) {
+                Some(handler) => handler.tick(&mut cx, prev_buttons),
+                None => ActionResult::Stay, // unknown action: hold state (defensive)
+            }
         };
         in_loop = matches!(result, ActionResult::Goto(..));
     }
