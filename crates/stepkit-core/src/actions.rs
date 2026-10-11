@@ -134,6 +134,12 @@ impl<'a> ActionCx<'a> {
         // matches the decomp, where no moving transition can bypass it.
         // (Callers that already remapped explicitly are unaffected: the
         // remap is idempotent.)
+        // NOTE: AIRBORNE/SUBMERGED/CUTSCENE groups are NOT dispatched here.
+        // The decomp does route them (mario.c:979), but the plugin's call
+        // sites already invoke entry::set_mario_action_airborne explicitly
+        // where needed. Dispatching here would double-apply entry effects
+        // (e.g., DOUBLE_JUMP velocity). The DIVE +15 (mario.c:856) is handled
+        // at the specific call sites that need it.
         let new = if new.0 & crate::state::act_flags::GROUP_MASK
             == crate::state::act_flags::GROUP_MOVING
         {
