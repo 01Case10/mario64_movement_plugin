@@ -12,11 +12,13 @@ use super::air::{
 };
 use super::{ActionCx, ActionHandler, ActionResult};
 use crate::angles::Angle;
+use crate::anim_table as anim_id;
 use crate::events::Event;
 use crate::input::buttons;
 use crate::state::ActionId;
-use crate::step::step_ground;
-use crate::world::{SurfaceClass, SurfaceKind};
+use crate::step::{perform_ground_step, stationary_ground_step, GroundStep};
+use crate::trig;
+use crate::world::{surface_flags, terrain_type, SurfaceClass, SurfaceKind};
 
 /// Animation slot ids (owned by the core; see stepkit-anim manifest).
 pub mod slot {
@@ -49,14 +51,9 @@ fn ground_prelude(cx: &mut ActionCx) -> Option<ActionResult> {
         return Some(crate::actions::water::enter_water_plunge(cx, wl));
     }
     // Peak height only tracks airtime; ground actions reset it.
-    cx.state.peak_height = 0.0;
-    let floor = cx.world.find_floor(cx.state.pos, 1.0);
+    let floor = cx.world.find_floor(cx.state.pos.x, cx.state.pos.y, cx.state.pos.z);
     match floor {
         Some(f) => {
-            if f.y < cx.state.pos.y - cx.params.ground_step_down {
-                // Floor too far below: walked off.
-                return Some(cx.goto(ActionId::FREEFALL, 0));
-            }
             // Quicksand sink: moving actions sink 0.25/frame, stationary
             // 0.5/frame; depth floors at 1.1 on entry. v1 treats all
             // quicksand as shallow (cap 10); depths at/above 30 (deep
@@ -76,18 +73,16 @@ fn ground_prelude(cx: &mut ActionCx) -> Option<ActionResult> {
                 } else {
                     grown.min(60.0)
                 };
-                if cx.state.quicksand_depth > 30.0 && cx.state.action != ActionId::IN_QUICKSAND {
-                    return Some(cx.goto(ActionId::IN_QUICKSAND, 0));
-                }
+                // NOTE: the deep-quicksand routing (depth > 30 ->
+                // IN_QUICKSAND) lives in the individual action handlers
+                // (decomp: act_idle checks quicksandDepth > 30), not here:
+                // a global yank would bounce explicitly-entered actions
+                // (punch, crouch) back and cycle with the action loop.
             } else if cx.state.action != ActionId::QUICKSAND_JUMP_LAND {
                 cx.state.quicksand_depth = 0.0;
             }
             cx.state.floor_y = Some(f.y);
             cx.state.floor_kind = surface_kind_index(f.kind);
-            // Snap small penetrations; the step routine handles the rest.
-            if cx.state.pos.y < f.y && f.y - cx.state.pos.y <= cx.params.ground_step_up {
-                cx.state.pos.y = f.y;
-            }
             None
         }
         None => Some(cx.goto(ActionId::FREEFALL, 0)),
@@ -142,7 +137,7 @@ fn approach_zero(speed: f32, rate: f32) -> f32 {
 /// The normal's horizontal projection points downhill, so facing along it
 /// gains speed and facing against it loses speed.
 fn slope_speed_delta(cx: &ActionCx) -> f32 {
-    let Some(f) = cx.world.find_floor(cx.state.pos, 1.0) else {
+    let Some(f) = cx.world.find_floor(cx.state.pos.x, cx.state.pos.y, cx.state.pos.z) else {
         return 0.0;
     };
     let steep = (f.normal.x * f.normal.x + f.normal.z * f.normal.z).sqrt();
@@ -156,36 +151,37 @@ fn slope_speed_delta(cx: &ActionCx) -> f32 {
 }
 
 /// Apply an explicit horizontal velocity through the ground step routine
-/// and record contacts.
-fn apply_ground_move_with(cx: &mut ActionCx, vx: f32, vz: f32) {
+/// and record contacts. Returns the step result; the caller handles
+/// `LeftGround` (usually `FREEFALL`) and `HitWall` per its intent.
+/// decomp: `perform_ground_step` (mario_step.c:317) commits pos/floor/wall
+/// itself; this just records the floor kind and the wall event.
+fn apply_ground_move_with(cx: &mut ActionCx, vx: f32, vz: f32) -> GroundStep {
     cx.state.vel.x = vx;
     cx.state.vel.z = vz;
     cx.state.vel.y = 0.0;
-    let out = step_ground(&cx.state, vx, vz, cx.world, cx.params);
-    cx.state.pos = out.pos;
-    cx.state.floor_y = out.floor.map(|f| f.y);
-    if let Some(f) = out.floor {
+    let result = perform_ground_step(&mut cx.state, cx.world);
+    if let Some(f) = cx.state.floor {
         cx.state.floor_kind = surface_kind_index(f.kind);
     }
-    if out.walked_off {
-        // Leave the transition to the next tick's prelude so the event
-        // ordering stays consistent (one transition per tick).
+    if result == GroundStep::HitWall {
+        if let Some(w) = cx.state.wall {
+            cx.events.push(Event::WallHit {
+                normal_yaw: crate::trig::atan2s(w.normal.z, w.normal.x),
+            });
+        }
     }
-    if out.wall_hit {
-        cx.state.wall_hit = true;
-        cx.state.wall_normal = out.wall_normal;
-        cx.events.push(Event::WallHit {
-            normal_yaw: crate::trig::atan2(out.wall_normal.x, out.wall_normal.z),
-        });
-    } else {
-        cx.state.wall_hit = false;
-    }
+    result
 }
 
-/// Apply the velocity through the ground step routine and record contacts.
-fn apply_ground_move(cx: &mut ActionCx) {
+/// Apply the velocity through the ground step routine. Returns `Some` when
+/// the step left the ground (the decomp's `LEFT_GROUND` → `FREEFALL`,
+/// booked for the next tick since the action function returns FALSE).
+fn apply_ground_move(cx: &mut ActionCx) -> Option<ActionResult> {
     let (vx, vz) = ground_velocity(cx);
-    apply_ground_move_with(cx, vx, vz);
+    match apply_ground_move_with(cx, vx, vz) {
+        GroundStep::LeftGround => Some(cx.goto_next(ActionId::FREEFALL, 0)),
+        _ => None,
+    }
 }
 
 /// Stick released while moving: BRAKING at speed >= 16 on walkable slopes,
@@ -193,7 +189,7 @@ fn apply_ground_move(cx: &mut ActionCx) {
 fn begin_braking_action(cx: &mut ActionCx) -> ActionResult {
     let steep_ok = cx
         .world
-        .find_floor(cx.state.pos, 1.0)
+        .find_floor(cx.state.pos.x, cx.state.pos.y, cx.state.pos.z)
         .is_some_and(|f| f.normal.y >= 0.1736);
     if cx.state.forward_speed >= cx.params.walk_brake_speed && steep_ok {
         cx.timeline.slot = slot::BRAKE;
@@ -207,7 +203,7 @@ fn begin_braking_action(cx: &mut ActionCx) -> ActionResult {
 /// The walking speed model: accel toward min(intendedMag, cap), flat-ground
 /// falloff above target, slope adjustment, facing approach, then move.
 /// Shared by Walking and FinishTurningAround.
-fn walk_body(cx: &mut ActionCx) {
+fn walk_body(cx: &mut ActionCx) -> Option<ActionResult> {
     let p = cx.params;
     let mag = cx.intended_magnitude();
     let target = mag.min(p.walk_target_speed_cap);
@@ -219,20 +215,23 @@ fn walk_body(cx: &mut ActionCx) {
         nspeed += p.walk_speedup_base - nspeed / p.walk_speedup_falloff_divisor;
     } else if cx
         .world
-        .find_floor(cx.state.pos, 1.0)
+        .find_floor(cx.state.pos.x, cx.state.pos.y, cx.state.pos.z)
         .is_some_and(|f| f.normal.y >= 0.95)
     {
         nspeed -= p.walk_decel_flat_ground;
     }
     nspeed = nspeed.min(p.walk_hard_cap);
     nspeed += slope_speed_delta(cx);
-    cx.state.forward_speed = nspeed;
+    cx.set_forward_speed(nspeed);
     // Facing approaches the intended yaw at up to walk_turn_rate/frame.
     if let Some(iy) = cx.intended_yaw() {
         cx.state.face_yaw = cx.state.face_yaw.approach(iy, p.walk_turn_rate);
     }
-    apply_ground_move(cx);
+    if let Some(r) = apply_ground_move(cx) {
+        return Some(r);
+    }
     cx.timeline.slot = slot::WALK;
+    None
 }
 
 /// Transition into Walking, applying the documented entry clamp:
@@ -241,7 +240,7 @@ fn walk_body(cx: &mut ActionCx) {
 fn enter_walking(cx: &mut ActionCx) -> ActionResult {
     let slippery = cx
         .world
-        .find_floor(cx.state.pos, 1.0)
+        .find_floor(cx.state.pos.x, cx.state.pos.y, cx.state.pos.z)
         .is_some_and(|f| SurfaceClass::of(f.kind) == SurfaceClass::VerySlippery);
     if !slippery {
         let clamp = cx
@@ -261,7 +260,7 @@ fn enter_walking(cx: &mut ActionCx) -> ActionResult {
 /// (decomp `mario_floor_is_steep`: class thresholds 0.9659258 / 0.9396926 /
 /// 0.8660254, steep only when not facing downhill)
 fn enter_jump_or_steep(cx: &mut ActionCx) -> ActionResult {
-    let steep = cx.world.find_floor(cx.state.pos, 1.0).is_some_and(|f| {
+    let steep = cx.world.find_floor(cx.state.pos.x, cx.state.pos.y, cx.state.pos.z).is_some_and(|f| {
         if f.normal.y > SurfaceClass::of(f.kind).steep_jump_y() {
             return false;
         }
@@ -270,7 +269,7 @@ fn enter_jump_or_steep(cx: &mut ActionCx) -> ActionResult {
         // backward.
         let h = (f.normal.x * f.normal.x + f.normal.z * f.normal.z).sqrt();
         let facing_downhill = if h > 1e-4 {
-            let downhill_yaw = crate::trig::atan2(f.normal.x, f.normal.z);
+            let downhill_yaw = crate::trig::atan2s(f.normal.z, f.normal.x);
             cx.state.face_yaw.diff_to(downhill_yaw).abs() <= 0x4000
         } else {
             false
@@ -288,7 +287,7 @@ fn enter_jump_or_steep(cx: &mut ActionCx) -> ActionResult {
 /// shove (raw mag > 48); otherwise punch -- the moving punch at speed >= 8,
 /// the stationary punch below it. (decomp-derived B routing)
 fn ground_b_action(cx: &mut ActionCx) -> ActionResult {
-    if cx.state.forward_speed >= 29.0 && cx.raw_magnitude() > 48.0 {
+    if cx.state.forward_speed >= 29.0 && cx.stick_mag() > 48.0 {
         return enter_dive(cx, true);
     }
     if cx.state.forward_speed >= 8.0 {
@@ -306,6 +305,11 @@ impl ActionHandler for Idle {
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
         if let Some(r) = ground_prelude(cx) {
             return r;
+        }
+        // Deep quicksand: sink into the waist-deep action.
+        // decomp: act_idle checks m->quicksandDepth > 30 (stationary.c:106).
+        if cx.state.quicksand_depth > 30.0 {
+            return cx.goto(ActionId::IN_QUICKSAND, 0);
         }
         // Dead (health < 0x100): no input response; the character lies
         // still. Full death warp is out of scope (simplification).
@@ -328,16 +332,164 @@ impl ActionHandler for Idle {
         if cx.pressed(buttons::B, prev_buttons) {
             return ground_b_action(cx);
         }
-        if cx.input.stick_held() {
+        if cx.stick_held() {
             return enter_walking(cx);
+        }
+        // --- Timer/state/anim discipline (decomp: act_idle, stationary.c:105).
+        // act_idle never increments actionTimer except in the head-turn
+        // branch below; actionState cycles 0->1->2 over the head-turn
+        // animations, and actionTimer counts completed cycles toward sleep.
+        if cx.state.action_state == 3 {
+            // The head-turn cycle completed 10 times: sleep (or shiver on snow).
+            // decomp: act_idle (stationary.c:125).
+            if cx.state.terrain_type & terrain_type::MASK == terrain_type::SNOW {
+                return cx.goto(ActionId::SHIVERING, 0);
+            } else {
+                return cx.goto(ActionId::START_SLEEPING, 0);
+            }
+        }
+        if cx.state.action_arg & 1 != 0 {
+            cx.set_mario_animation(anim_id::MARIO_ANIM_STAND_AGAINST_WALL);
+        } else {
+            match cx.state.action_state {
+                0 => {
+                    cx.set_mario_animation(anim_id::MARIO_ANIM_IDLE_HEAD_LEFT);
+                }
+                1 => {
+                    cx.set_mario_animation(anim_id::MARIO_ANIM_IDLE_HEAD_RIGHT);
+                }
+                _ => {
+                    cx.set_mario_animation(anim_id::MARIO_ANIM_IDLE_HEAD_CENTER);
+                }
+            }
+            if cx.is_anim_at_end() {
+                // Fall asleep after 10 head-turning cycles. actionTimer
+                // tracks how many cycles have passed.
+                // decomp: act_idle (stationary.c:152).
+                cx.state.action_state += 1;
+                if cx.state.action_state == 3 {
+                    // Only sleep when the floor 60 units behind Mario is
+                    // within 24 units vertically and not dynamic.
+                    // decomp: find_floor_height_relative_polar(m, -0x8000, 60).
+                    let behind = cx.state.face_yaw.wrapping_add(Angle::HALF_TURN);
+                    let bx = cx.state.pos.x + 60.0 * trig::sins(behind);
+                    let bz = cx.state.pos.z + 60.0 * trig::coss(behind);
+                    let floor_behind =
+                        cx.world.find_floor(bx, cx.state.pos.y + 100.0, bz);
+                    let sleep_ok = match floor_behind {
+                        Some(f) => {
+                            let dy = cx.state.pos.y - f.y;
+                            dy >= -24.0
+                                && dy <= 24.0
+                                && f.flags & surface_flags::DYNAMIC == 0
+                        }
+                        None => false,
+                    };
+                    if !sleep_ok {
+                        cx.state.action_state = 0;
+                    } else {
+                        cx.state.action_timer += 1;
+                        if cx.state.action_timer < 10 {
+                            cx.state.action_state = 0;
+                        }
+                    }
+                }
+            }
         }
         // Body: stand still.
         cx.state.forward_speed = 0.0;
         cx.state.vel.x = 0.0;
         cx.state.vel.z = 0.0;
         cx.timeline.slot = slot::IDLE;
+        // decomp: act_idle calls stationary_ground_step (mario_actions_stationary.c).
+        stationary_ground_step(&mut cx.state, cx.world);
         ActionResult::Stay
     }
+}
+
+/// Walk animation state machine. `actionTimer` is the walk phase:
+/// 0 = start-tiptoe, 1 = tiptoe, 2 = walk, 3 = run. (Audio calls are
+/// skipped; the `oMarioWalkingPitch` gfx tilt is renderer-only.)
+/// decomp: src/game/mario_actions_moving.c:516 (`anim_and_audio_for_walk`).
+fn anim_and_audio_for_walk(cx: &mut ActionCx) {
+    let mut val04 = if cx.state.intended_mag > cx.state.forward_speed {
+        cx.state.intended_mag
+    } else {
+        cx.state.forward_speed
+    };
+    if val04 < 4.0 {
+        val04 = 4.0;
+    }
+
+    if cx.state.quicksand_depth > 50.0 {
+        // (s32)(val04 / 4.0f * 0x10000): f32 arithmetic, truncate toward zero.
+        let val14 = (val04 / 4.0 * 65536.0) as i32;
+        cx.set_mario_anim_with_accel(anim_id::MARIO_ANIM_MOVE_IN_QUICKSAND, val14);
+        cx.state.action_timer = 0;
+    } else {
+        let mut again = true;
+        while again {
+            again = false;
+            match cx.state.action_timer {
+                0 => {
+                    if val04 > 8.0 {
+                        cx.state.action_timer = 2;
+                        again = true;
+                    } else {
+                        // (Speed Crash, decomp) If Mario's speed is more than 2^17.
+                        let mut val14 = (val04 / 4.0 * 65536.0) as i32;
+                        if val14 < 0x1000 {
+                            val14 = 0x1000;
+                        }
+                        cx.set_mario_anim_with_accel(anim_id::MARIO_ANIM_START_TIPTOE, val14);
+                        if cx.is_anim_past_frame(23) {
+                            cx.state.action_timer = 2;
+                        }
+                    }
+                }
+                1 => {
+                    if val04 > 8.0 {
+                        cx.state.action_timer = 2;
+                        again = true;
+                    } else {
+                        // (Speed Crash, decomp) If Mario's speed is more than 2^17.
+                        let mut val14 = (val04 * 65536.0) as i32;
+                        if val14 < 0x1000 {
+                            val14 = 0x1000;
+                        }
+                        cx.set_mario_anim_with_accel(anim_id::MARIO_ANIM_TIPTOE, val14);
+                    }
+                }
+                2 => {
+                    if val04 < 5.0 {
+                        cx.state.action_timer = 1;
+                        again = true;
+                    } else if val04 > 22.0 {
+                        cx.state.action_timer = 3;
+                        again = true;
+                    } else {
+                        // (Speed Crash, decomp) If Mario's speed is more than 2^17.
+                        let val14 = (val04 / 4.0 * 65536.0) as i32;
+                        cx.set_mario_anim_with_accel(anim_id::MARIO_ANIM_WALKING, val14);
+                    }
+                }
+                3 => {
+                    if val04 < 18.0 {
+                        cx.state.action_timer = 2;
+                        again = true;
+                    } else {
+                        // (Speed Crash, decomp) If Mario's speed is more than 2^17.
+                        let val14 = (val04 / 4.0 * 65536.0) as i32;
+                        cx.set_mario_anim_with_accel(anim_id::MARIO_ANIM_RUNNING, val14);
+                        // targetPitch = tilt_body_running(m): visual; skipped.
+                    }
+                }
+                // Unreachable: the state machine only produces 0..=3.
+                _ => {}
+            }
+        }
+    }
+    // oMarioWalkingPitch / gfx angle: renderer-only; skipped.
 }
 
 /// Walking: stick-held ground locomotion at any speed.
@@ -387,11 +539,18 @@ impl ActionHandler for Walking {
                 return cx.goto(ActionId::TURNING_AROUND, 0);
             }
         }
-        if !cx.input.stick_held() {
+        if !cx.stick_held() {
             return begin_braking_action(cx);
         }
+        // decomp: act_walking sets m->actionState = 0 before the speed
+        // update (moving.c:798); anim_and_audio_for_walk runs on the
+        // GROUND_STEP_NONE path (moving.c:823).
+        cx.state.action_state = 0;
         // --- Body: the shared walking speed model. ---
-        walk_body(cx);
+        if let Some(r) = walk_body(cx) {
+            return r;
+        }
+        anim_and_audio_for_walk(cx);
         ActionResult::Stay
     }
 }
@@ -414,7 +573,7 @@ impl ActionHandler for TurningAround {
         if cx.pressed(buttons::Z, prev_buttons) {
             return enter_crouch(cx);
         }
-        if !cx.input.stick_held() {
+        if !cx.stick_held() {
             return begin_braking_action(cx);
         }
         // Turn toward the stick at the walking turn rate until aligned.
@@ -425,7 +584,18 @@ impl ActionHandler for TurningAround {
                 return cx.goto(ActionId::FINISH_TURNING_AROUND, 0);
             }
         }
-        apply_ground_move(cx);
+        if let Some(r) = apply_ground_move(cx) {
+            return r;
+        }
+        // decomp: act_turning_around (moving.c:962) requests the turn
+        // animation every frame after the ground step: PART1 at speed >=
+        // 18, PART2 below. No timer use. (Its is_anim_at_end ->
+        // begin_walking_action transition is behavior; not ported here.)
+        if cx.state.forward_speed >= 18.0 {
+            cx.set_mario_animation(anim_id::MARIO_ANIM_TURNING_PART1);
+        } else {
+            cx.set_mario_animation(anim_id::MARIO_ANIM_TURNING_PART2);
+        }
         cx.timeline.slot = slot::TURN;
         ActionResult::Stay
     }
@@ -450,10 +620,17 @@ impl ActionHandler for FinishTurningAround {
         if let Some(r) = check_slide(cx) {
             return r;
         }
-        if !cx.input.stick_held() {
+        if !cx.stick_held() {
             return begin_braking_action(cx);
         }
-        walk_body(cx);
+        if let Some(r) = walk_body(cx) {
+            return r;
+        }
+        // decomp: act_finish_turning_around (moving.c:1013) requests
+        // MARIO_ANIM_TURNING_PART2 every frame after the speed update. No
+        // timer use. (Its is_anim_at_end -> ACT_WALKING transition is
+        // behavior; the plugin ends this action on facing alignment.)
+        cx.set_mario_animation(anim_id::MARIO_ANIM_TURNING_PART2);
         cx.timeline.slot = slot::FINISH_TURN;
         // End once the facing has settled onto the stick.
         if let Some(iy) = cx.intended_yaw() {
@@ -500,16 +677,22 @@ impl ActionHandler for Braking {
             }
             return enter_crouch(cx);
         }
-        if cx.input.stick_held() {
+        if cx.stick_held() {
             return enter_walking(cx);
         }
         let speed = approach_zero(cx.state.forward_speed, 2.0) + slope_speed_delta(cx);
         cx.state.forward_speed = speed;
-        apply_ground_move(cx);
+        if let Some(r) = apply_ground_move(cx) {
+            return r;
+        }
         if speed <= 0.0 {
             cx.timeline.slot = slot::IDLE;
             return cx.goto(ActionId::IDLE, 0);
         }
+        // decomp: act_braking (moving.c:1037) requests
+        // MARIO_ANIM_SKID_ON_GROUND every frame, after the ground step. No
+        // timer use.
+        cx.set_mario_animation(anim_id::MARIO_ANIM_SKID_ON_GROUND);
         cx.timeline.slot = slot::BRAKE;
         ActionResult::Stay
     }
@@ -550,15 +733,34 @@ impl ActionHandler for Decelerating {
             }
             return enter_crouch(cx);
         }
-        if cx.input.stick_held() {
+        if cx.stick_held() {
             return enter_walking(cx);
         }
         let speed = approach_zero(cx.state.forward_speed, 1.0);
         cx.state.forward_speed = speed;
-        apply_ground_move(cx);
+        if let Some(r) = apply_ground_move(cx) {
+            return r;
+        }
         if speed <= 0.0 {
             cx.timeline.slot = slot::IDLE;
             return cx.goto(ActionId::IDLE, 0);
+        }
+        // decomp: act_decelerating (moving.c:1072) requests the animation
+        // every frame after the ground step: IDLE_HEAD_LEFT on very
+        // slippery floors, otherwise WALKING with accel
+        // (s32)(forwardVel / 4 * 0x10000), floored at 0x1000. No timer use.
+        let very_slippery = cx
+            .world
+            .find_floor(cx.state.pos.x, cx.state.pos.y, cx.state.pos.z)
+            .is_some_and(|f| SurfaceClass::of(f.kind) == SurfaceClass::VerySlippery);
+        if very_slippery {
+            cx.set_mario_animation(anim_id::MARIO_ANIM_IDLE_HEAD_LEFT);
+        } else {
+            let mut val0c = (cx.state.forward_speed / 4.0 * 65536.0) as i32;
+            if val0c < 0x1000 {
+                val0c = 0x1000;
+            }
+            cx.set_mario_anim_with_accel(anim_id::MARIO_ANIM_WALKING, val0c);
         }
         cx.timeline.slot = slot::DECEL;
         ActionResult::Stay
@@ -583,20 +785,34 @@ enum LandChain {
 /// Landing physics: stick held -> speed approaches 0 at 0.98/frame;
 /// no stick at speed >= 16 -> slope decel 2.0/frame; floors steeper than
 /// normal.y 0.2924 (~73 deg) push the character off instead of landing.
+///
+/// Timer/state discipline (decomp: `common_landing_cancels` +
+/// `common_landing_action`, moving.c:1722-1790): `++actionTimer` and
+/// `doubleJumpTimer = unk02` happen in the cancels, every frame, before the
+/// A-chain; the animation is (re)requested every frame by the action body;
+/// quicksand floors add `(4 - actionTimer) * 3.5 - 0.5` to the sink depth.
 fn landing_tick(
     cx: &mut ActionCx,
     prev_buttons: u16,
     frames: u32,
     chain: LandChain,
     end: ActionId,
+    anim: i32,
+    unk02: u32,
 ) -> ActionResult {
     if let Some(r) = ground_prelude(cx) {
         return r;
     }
+    // decomp: common_landing_cancels does ++m->actionTimer and sets
+    // m->doubleJumpTimer = landingAction->unk02 every frame.
+    // common_landing_action's play_mario_landing_sound sets ACTION_SOUND_PLAYED.
+    cx.state.action_timer = cx.state.action_timer.wrapping_add(1);
+    cx.state.double_jump_timer = unk02;
+    cx.state.flags |= crate::state::mario_flags::ACTION_SOUND_PLAYED;
     // Record the landing impact speed from the goto arg (fall damage and
     // squish consume this; see plan Phase D).
     cx.state.last_fall_speed = cx.arg() as f32;
-    if let Some(f) = cx.world.find_floor(cx.state.pos, 1.0) {
+    if let Some(f) = cx.world.find_floor(cx.state.pos.x, cx.state.pos.y, cx.state.pos.z) {
         if f.normal.y < 0.2924 {
             return cx.goto(ActionId::FREEFALL, 0);
         }
@@ -644,29 +860,43 @@ fn landing_tick(
             }
         }
     }
-    if cx.input.stick_held() {
+    if cx.stick_held() {
         cx.state.forward_speed =
             approach_zero(cx.state.forward_speed, 0.98) + slope_speed_delta(cx);
     } else if cx.state.forward_speed >= 16.0 {
         cx.state.forward_speed = approach_zero(cx.state.forward_speed, 2.0) + slope_speed_delta(cx);
     }
-    apply_ground_move(cx);
+    if let Some(r) = apply_ground_move(cx) {
+        return r;
+    }
     if cx.state.action_timer >= frames {
         return cx.goto(end, 0);
+    }
+    // decomp: common_landing_action (re)requests the landing animation
+    // every frame (moving.c:1749), then grows the quicksand depth on
+    // quicksand floors (moving.c:1752).
+    cx.set_mario_animation(anim);
+    if let Some(f) = cx.state.floor {
+        if f.surface_type >= crate::world::surface_type::SHALLOW_QUICKSAND
+            && f.surface_type <= crate::world::surface_type::MOVING_QUICKSAND
+        {
+            cx.state.quicksand_depth +=
+                (4 - cx.state.action_timer as i32) as f32 * 3.5 - 0.5;
+        }
     }
     cx.timeline.slot = slot::LAND;
     ActionResult::Stay
 }
 
 macro_rules! landing_action {
-    ($name:ident, $label:literal, $frames:expr, $chain:expr, $end:expr) => {
+    ($name:ident, $label:literal, $frames:expr, $chain:expr, $end:expr, $anim:expr, $unk02:expr) => {
         pub struct $name;
         impl ActionHandler for $name {
             fn name(&self) -> &'static str {
                 $label
             }
             fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
-                landing_tick(cx, prev_buttons, $frames, $chain, $end)
+                landing_tick(cx, prev_buttons, $frames, $chain, $end, $anim, $unk02)
             }
         }
     };
@@ -677,49 +907,66 @@ landing_action!(
     "JumpLand",
     4,
     LandChain::DoubleJump,
-    ActionId::IDLE
+    ActionId::JUMP_LAND_STOP,
+    anim_id::MARIO_ANIM_LAND_FROM_SINGLE_JUMP,
+    5
 );
 landing_action!(
     DoubleJumpLand,
     "DoubleJumpLand",
     4,
     LandChain::SpeedChain,
-    ActionId::IDLE
+    ActionId::DOUBLE_JUMP_LAND_STOP,
+    anim_id::MARIO_ANIM_LAND_FROM_DOUBLE_JUMP,
+    5
 );
 landing_action!(
     TripleJumpLand,
     "TripleJumpLand",
     4,
     LandChain::Suppressed,
-    ActionId::IDLE
+    ActionId::TRIPLE_JUMP_LAND_STOP,
+    anim_id::MARIO_ANIM_TRIPLE_JUMP_LAND,
+    0
 );
 landing_action!(
     BackflipLand,
     "BackflipLand",
     4,
     LandChain::BackflipHeldZ,
-    ActionId::IDLE
+    ActionId::BACKFLIP_LAND_STOP,
+    anim_id::MARIO_ANIM_TRIPLE_JUMP_LAND,
+    0
 );
 landing_action!(
     SideFlipLand,
     "SideFlipLand",
     4,
     LandChain::DoubleJump,
-    ActionId::IDLE
+    ActionId::SIDE_FLIP_LAND_STOP,
+    anim_id::MARIO_ANIM_SLIDEFLIP_LAND,
+    5
 );
 landing_action!(
     FreefallLand,
     "FreefallLand",
     4,
     LandChain::DoubleJump,
-    ActionId::IDLE
+    ActionId::FREEFALL_LAND_STOP,
+    anim_id::MARIO_ANIM_GENERAL_LAND,
+    5
 );
+// The decomp picks FAST vs SLOW by oMarioLongJumpIsSlow (set at long-jump
+// entry from forwardVel > 16); the plugin does not model that flag yet, so
+// the fast variant is used. (Phase 5-7.)
 landing_action!(
     LongJumpLand,
     "LongJumpLand",
     6,
     LandChain::LongJumpHeldZ,
-    ActionId::CROUCH
+    ActionId::LONG_JUMP_LAND_STOP,
+    anim_id::MARIO_ANIM_CROUCH_FROM_FAST_LONGJUMP,
+    5
 );
 
 /// Crouch entry. (wiki:Crouching@17805)
@@ -759,6 +1006,10 @@ impl ActionHandler for Crouch {
             cx.timeline.slot = slot::CRAWL;
             return cx.goto(ActionId::CRAWL, 0);
         }
+        // decomp: act_crouching (stationary.c:528) requests
+        // MARIO_ANIM_CROUCHING every frame after the stationary step. No
+        // timer use.
+        cx.set_mario_animation(anim_id::MARIO_ANIM_CROUCHING);
         cx.timeline.slot = slot::CROUCH;
         ActionResult::Stay
     }
@@ -793,7 +1044,16 @@ impl ActionHandler for Crawl {
             (speed - 2.0).max(target)
         };
         cx.state.face_yaw = cx.state.face_yaw.approach(intended, 0x800);
-        apply_ground_move(cx);
+        if let Some(r) = apply_ground_move(cx) {
+            return r;
+        }
+        // decomp: act_crawling (moving.c:1247) requests MARIO_ANIM_CRAWLING
+        // every frame after the ground step, with accel
+        // (s32)(intendedMag * 2 * 0x10000). The decomp scales intendedMag
+        // by 0.1 for movement first (behavior; not ported); the accel uses
+        // the scaled value. No timer use.
+        let val04 = (cx.intended_magnitude() * 0.1 * 2.0 * 65536.0) as i32;
+        cx.set_mario_anim_with_accel(anim_id::MARIO_ANIM_CRAWLING, val04);
         cx.timeline.slot = slot::CRAWL;
         ActionResult::Stay
     }
@@ -804,11 +1064,11 @@ impl ActionHandler for Crawl {
 /// downhill -> butt slide; otherwise -> stomach slide. On near-flat
 /// slide floors the downhill direction is degenerate, so default to butt.
 pub fn begin_sliding(cx: &mut ActionCx) -> ActionResult {
-    let downhill_yaw = cx.world.find_floor(cx.state.pos, 1.0).and_then(|f| {
+    let downhill_yaw = cx.world.find_floor(cx.state.pos.x, cx.state.pos.y, cx.state.pos.z).and_then(|f| {
         let steep = (f.normal.x * f.normal.x + f.normal.z * f.normal.z).sqrt();
         if steep > 0.02 {
             // The normal's horizontal projection points downhill.
-            Some(crate::trig::atan2(f.normal.x, f.normal.z))
+            Some(crate::trig::atan2s(f.normal.z, f.normal.x))
         } else {
             None
         }
@@ -824,7 +1084,7 @@ pub fn begin_sliding(cx: &mut ActionCx) -> ActionResult {
 /// character faces downhill or moves backward (forward_speed <= -1).
 /// (decomp-derived slide trigger)
 fn slide_trigger_active(cx: &mut ActionCx) -> bool {
-    let Some(f) = cx.world.find_floor(cx.state.pos, 1.0) else {
+    let Some(f) = cx.world.find_floor(cx.state.pos.x, cx.state.pos.y, cx.state.pos.z) else {
         return false;
     };
     if f.kind == SurfaceKind::Slide {
@@ -838,7 +1098,7 @@ fn slide_trigger_active(cx: &mut ActionCx) -> bool {
     // floor normal's horizontal projection points downhill).
     let steep = (f.normal.x * f.normal.x + f.normal.z * f.normal.z).sqrt();
     let facing_downhill = if steep > 1e-4 {
-        let downhill_yaw = crate::trig::atan2(f.normal.x, f.normal.z);
+        let downhill_yaw = crate::trig::atan2s(f.normal.z, f.normal.x);
         cx.state.face_yaw.diff_to(downhill_yaw).abs() <= 0x4000
     } else {
         false
@@ -909,7 +1169,7 @@ fn enter_crouch_slide(cx: &mut ActionCx) -> ActionResult {
 /// slide vector (not from facing) and sets forward_speed to the facing
 /// projection for compatibility. Returns the slide speed after the update.
 fn update_slide_vector(cx: &mut ActionCx) -> f32 {
-    let floor = cx.world.find_floor(cx.state.pos, 1.0);
+    let floor = cx.world.find_floor(cx.state.pos.x, cx.state.pos.y, cx.state.pos.z);
     let n = floor.map(|f| f.normal).unwrap_or(glam::Vec3::Y);
     let class = floor
         .map(|f| SurfaceClass::of(f.kind))
@@ -929,16 +1189,16 @@ fn update_slide_vector(cx: &mut ActionCx) -> f32 {
         let mag = cx.intended_magnitude() / 32.0;
         if speed > 0.01 && mag > 0.01 {
             // Steer the slide velocity sideways toward the intended yaw.
-            let slide_yaw = crate::trig::atan2(cx.state.slide_vel_x, cx.state.slide_vel_z);
+            let slide_yaw = crate::trig::atan2s(cx.state.slide_vel_z, cx.state.slide_vel_x);
             let rate = (0x400 as f32 * mag) as u16;
             let new_yaw = slide_yaw.approach(iy, rate);
-            let (s, c) = (crate::trig::sin(new_yaw), crate::trig::cos(new_yaw));
+            let (s, c) = (crate::trig::sins(new_yaw), crate::trig::coss(new_yaw));
             cx.state.slide_vel_x = s * speed;
             cx.state.slide_vel_z = c * speed;
             // Forward/back stick modulates the decay: pushing along the
             // slide direction loosens it, pulling back tightens it.
-            let dyaw_rad = iy.diff_to(slide_yaw) as f32 / 65536.0 * std::f32::consts::TAU;
-            let loss = class.slide_loss() + mag * dyaw_rad.cos() * 0.02;
+            let dyaw = Angle(iy.diff_to(slide_yaw) as i16);
+            let loss = class.slide_loss() + mag * crate::trig::coss(dyaw) * 0.02;
             cx.state.slide_vel_x *= loss;
             cx.state.slide_vel_z *= loss;
         }
@@ -949,7 +1209,7 @@ fn update_slide_vector(cx: &mut ActionCx) -> f32 {
         cx.state.slide_vel_x *= class.slide_loss();
         cx.state.slide_vel_z *= class.slide_loss();
         if steep > 1e-4 {
-            let dh_yaw = crate::trig::atan2(n.x, n.z);
+            let dh_yaw = crate::trig::atan2s(n.z, n.x);
             cx.state.face_yaw = cx.state.face_yaw.approach(dh_yaw, 0x400);
         }
     }
@@ -976,7 +1236,7 @@ fn update_slide_vector(cx: &mut ActionCx) -> f32 {
     let (fx, fz) = cx.forward_xz();
     let mut forward_speed = cx.state.slide_vel_x * fx + cx.state.slide_vel_z * fz;
     if speed > 0.01 {
-        let slide_yaw = crate::trig::atan2(cx.state.slide_vel_x, cx.state.slide_vel_z);
+        let slide_yaw = crate::trig::atan2s(cx.state.slide_vel_z, cx.state.slide_vel_x);
         if cx.state.face_yaw.diff_to(slide_yaw).abs() > 0x4000 {
             forward_speed = -forward_speed;
         }
@@ -997,20 +1257,33 @@ impl ActionHandler for ButtSlide {
         if let Some(r) = ground_prelude(cx) {
             return r;
         }
-        if cx.pressed(buttons::A, prev_buttons) {
-            return enter_jump(cx); // (verify)
+        // decomp: common_slide_action_with_jump (moving.c:1414): the A-jump is
+        // gated on actionTimer == 5; every other frame increments the
+        // timer. (Behavior note: the plugin previously allowed A on any
+        // frame.)
+        if cx.state.action_timer == 5 {
+            if cx.pressed(buttons::A, prev_buttons) {
+                return enter_jump(cx);
+            }
+        } else {
+            cx.state.action_timer = cx.state.action_timer.wrapping_add(1);
         }
         let speed = update_slide_vector(cx);
         if speed < 4.0 && cx.state.action_timer > 5 {
-            if cx.input.stick_held() {
+            if cx.stick_held() {
                 return enter_walking(cx);
             }
             cx.timeline.slot = slot::IDLE;
             return cx.goto(ActionId::IDLE, 0);
         }
-        apply_ground_move_with(cx, cx.state.slide_vel_x, cx.state.slide_vel_z);
-        if cx.state.wall_hit {
-            return slide_bonk(cx);
+        match apply_ground_move_with(cx, cx.state.slide_vel_x, cx.state.slide_vel_z) {
+            GroundStep::LeftGround => return cx.goto_next(ActionId::FREEFALL, 0),
+            GroundStep::HitWall => return slide_bonk(cx),
+            // decomp: common_slide_action (moving.c:1359) requests the
+            // slide animation on GROUND_STEP_NONE.
+            GroundStep::None => {
+                cx.set_mario_animation(anim_id::MARIO_ANIM_SLIDE);
+            }
         }
         cx.timeline.slot = slot::BUTT_SLIDE;
         ActionResult::Stay
@@ -1029,23 +1302,36 @@ impl ActionHandler for StomachSlide {
         if let Some(r) = ground_prelude(cx) {
             return r;
         }
-        if cx.state.action_timer == 5
-            && (cx.pressed(buttons::A, prev_buttons) || cx.pressed(buttons::B, prev_buttons))
-            && !cx.input.stick_held()
-        {
-            if cx.state.forward_speed >= 0.0 {
-                return super::air::enter_forward_rollout(cx);
+        // decomp: stomach_slide_action (moving.c:1520): the A/B rollout is
+        // gated on actionTimer == 5; every other frame increments the
+        // timer. (The plugin additionally requires no stick held; the
+        // decomp has no such check.)
+        if cx.state.action_timer == 5 {
+            if (cx.pressed(buttons::A, prev_buttons) || cx.pressed(buttons::B, prev_buttons))
+                && !cx.stick_held()
+            {
+                if cx.state.forward_speed >= 0.0 {
+                    return super::air::enter_forward_rollout(cx);
+                }
+                return super::air::enter_backward_rollout(cx);
             }
-            return super::air::enter_backward_rollout(cx);
+        } else {
+            cx.state.action_timer = cx.state.action_timer.wrapping_add(1);
         }
         let speed = update_slide_vector(cx);
         if speed < 4.0 && cx.state.action_timer > 5 {
             cx.timeline.slot = slot::IDLE;
             return cx.goto(ActionId::IDLE, 0);
         }
-        apply_ground_move_with(cx, cx.state.slide_vel_x, cx.state.slide_vel_z);
-        if cx.state.wall_hit {
-            return slide_bonk(cx);
+        match apply_ground_move_with(cx, cx.state.slide_vel_x, cx.state.slide_vel_z) {
+            GroundStep::LeftGround => return cx.goto_next(ActionId::FREEFALL, 0),
+            GroundStep::HitWall => return slide_bonk(cx),
+            // decomp: common_slide_action (moving.c:1359) requests the
+            // slide animation on GROUND_STEP_NONE; the stomach slide's is
+            // MARIO_ANIM_SLIDE_DIVE (act_stomach_slide, moving.c:1542).
+            GroundStep::None => {
+                cx.set_mario_animation(anim_id::MARIO_ANIM_SLIDE_DIVE);
+            }
         }
         cx.timeline.slot = slot::STOMACH_SLIDE;
         ActionResult::Stay
@@ -1074,9 +1360,15 @@ impl ActionHandler for DiveSlide {
             cx.timeline.slot = slot::IDLE;
             return cx.goto(ActionId::IDLE, 0);
         }
-        apply_ground_move_with(cx, cx.state.slide_vel_x, cx.state.slide_vel_z);
-        if cx.state.wall_hit {
-            return slide_bonk(cx);
+        match apply_ground_move_with(cx, cx.state.slide_vel_x, cx.state.slide_vel_z) {
+            GroundStep::LeftGround => return cx.goto_next(ActionId::FREEFALL, 0),
+            GroundStep::HitWall => return slide_bonk(cx),
+            // decomp: common_slide_action (moving.c:1359) requests the
+            // slide animation on GROUND_STEP_NONE; the dive slide's is
+            // MARIO_ANIM_DIVE (act_dive_slide, moving.c:1557).
+            GroundStep::None => {
+                cx.set_mario_animation(anim_id::MARIO_ANIM_DIVE);
+            }
         }
         cx.timeline.slot = slot::DIVE_SLIDE;
         ActionResult::Stay
@@ -1102,7 +1394,9 @@ impl ActionHandler for CrouchSlide {
         let speed = (cx.state.slide_vel_x * cx.state.slide_vel_x
             + cx.state.slide_vel_z * cx.state.slide_vel_z)
             .sqrt();
+        // decomp: act_crouch_slide's own timer block (moving.c:1459).
         if cx.state.action_timer < 30 {
+            cx.state.action_timer = cx.state.action_timer.wrapping_add(1);
             if cx.pressed(buttons::A, prev_buttons) && speed > 10.0 {
                 return enter_long_jump(cx);
             }
@@ -1117,14 +1411,28 @@ impl ActionHandler for CrouchSlide {
         } else if cx.pressed(buttons::A, prev_buttons) {
             return enter_jump(cx);
         }
+        // decomp: common_slide_action_with_jump (moving.c:1414) also
+        // increments the timer every frame except on the timer == 5 frame.
+        // (Its A-gate there is unreachable for the crouch slide: any A
+        // press already returned via the checks above, so only the
+        // increment — with the == 5 stall — is replicated.)
+        if cx.state.action_timer != 5 {
+            cx.state.action_timer = cx.state.action_timer.wrapping_add(1);
+        }
         let speed = update_slide_vector(cx);
         if speed < 4.0 && cx.state.action_timer > 5 {
             cx.timeline.slot = slot::CROUCH;
             return cx.goto(ActionId::CROUCH, 0);
         }
-        apply_ground_move_with(cx, cx.state.slide_vel_x, cx.state.slide_vel_z);
-        if cx.state.wall_hit {
-            return slide_bonk(cx);
+        match apply_ground_move_with(cx, cx.state.slide_vel_x, cx.state.slide_vel_z) {
+            GroundStep::LeftGround => return cx.goto_next(ActionId::FREEFALL, 0),
+            GroundStep::HitWall => return slide_bonk(cx),
+            // decomp: common_slide_action (moving.c:1359) requests the
+            // slide animation on GROUND_STEP_NONE; the crouch slide's is
+            // MARIO_ANIM_START_CROUCHING (act_crouch_slide, moving.c:1452).
+            GroundStep::None => {
+                cx.set_mario_animation(anim_id::MARIO_ANIM_START_CROUCHING);
+            }
         }
         cx.timeline.slot = slot::CROUCH_SLIDE;
         ActionResult::Stay
@@ -1146,11 +1454,17 @@ impl ActionHandler for SlideKickSlide {
         if cx.pressed(buttons::A, prev_buttons) {
             return super::air::enter_forward_rollout(cx);
         }
+        // decomp: act_slide_kick_slide (moving.c:1489) requests
+        // MARIO_ANIM_SLIDE_KICK every frame. No timer use.
+        cx.set_mario_animation(anim_id::MARIO_ANIM_SLIDE_KICK);
         let speed = update_slide_vector(cx);
-        apply_ground_move_with(cx, cx.state.slide_vel_x, cx.state.slide_vel_z);
-        if cx.state.wall_hit {
-            // spec: knockback.bonk_speed_threshold (decomp-derived)
-            return enter_ground_bonk(cx, ActionId::BACKWARD_GROUND_KB);
+        match apply_ground_move_with(cx, cx.state.slide_vel_x, cx.state.slide_vel_z) {
+            GroundStep::LeftGround => return cx.goto_next(ActionId::FREEFALL, 0),
+            GroundStep::HitWall => {
+                // spec: knockback.bonk_speed_threshold (decomp-derived)
+                return enter_ground_bonk(cx, ActionId::BACKWARD_GROUND_KB);
+            }
+            GroundStep::None => {}
         }
         if speed < 1.0 {
             cx.timeline.slot = slot::CROUCH;
@@ -1187,6 +1501,13 @@ impl ActionHandler for InQuicksand {
         if cx.pressed(buttons::Z, prev_buttons) {
             return enter_crouch(cx);
         }
+        // decomp: act_in_quicksand (stationary.c:509): DYING_IN_QUICKSAND
+        // past depth 70, otherwise IDLE_IN_QUICKSAND. No timer use.
+        if cx.state.quicksand_depth > 70.0 {
+            cx.set_mario_animation(anim_id::MARIO_ANIM_DYING_IN_QUICKSAND);
+        } else {
+            cx.set_mario_animation(anim_id::MARIO_ANIM_IDLE_IN_QUICKSAND);
+        }
         // Waist-deep: stuck in place.
         cx.state.forward_speed = 0.0;
         cx.state.vel.x = 0.0;
@@ -1209,13 +1530,29 @@ impl ActionHandler for QuicksandJumpLand {
         if let Some(r) = ground_prelude(cx) {
             return r;
         }
+        // decomp: quicksand_jump_land_action (moving.c:1914):
+        // `if (m->actionTimer++ < 6)` — the post-increment runs every frame;
+        // the branch bodies observe the post-increment value `t`.
+        cx.state.action_timer = cx.state.action_timer.wrapping_add(1);
         let t = cx.state.action_timer;
         if (1..=6).contains(&t) {
-            cx.state.quicksand_depth = (cx.state.quicksand_depth - (7 - t) as f32 * 0.8).max(1.1);
+            // decomp: m->quicksandDepth -= (7 - m->actionTimer) * 0.8f,
+            // then `if (m->quicksandDepth < 1.0f) m->quicksandDepth = 1.1f;`.
+            cx.state.quicksand_depth -= (7 - t) as f32 * 0.8;
+            if cx.state.quicksand_depth < 1.0 {
+                cx.state.quicksand_depth = 1.1;
+            }
+            cx.set_mario_animation(anim_id::MARIO_ANIM_SINGLE_JUMP);
+        } else {
+            cx.set_mario_animation(anim_id::MARIO_ANIM_LAND_FROM_SINGLE_JUMP);
         }
         cx.state.forward_speed = approach_zero(cx.state.forward_speed, 0.95);
-        apply_ground_move(cx);
+        if let Some(r) = apply_ground_move(cx) {
+            return r;
+        }
         if t >= 13 {
+            // v1 ends at IDLE; the reference ends at JUMP_LAND_STOP
+            // (quicksand_jump_land_action's endAction, moving.c:1941).
             cx.timeline.slot = slot::IDLE;
             return cx.goto(ActionId::IDLE, 0);
         }
@@ -1258,31 +1595,54 @@ fn punch_tick(cx: &mut ActionCx, prev_buttons: u16, move_punch: bool) -> ActionR
     if let Some(r) = check_slide(cx) {
         return r;
     }
+    // Timer discipline: the v1 combo frame budgets below need the explicit
+    // per-tick increment the removed auto-increment used to provide.
+    // (The decomp's act_punching drives actionTimer 7->0 for the punch
+    // forward-velocity table and runs the combo as an actionArg 0-9 state
+    // machine with anim-end transitions — a behavioral port, not done
+    // here; the v1 action_state stage machine is kept.)
+    cx.state.action_timer = cx.state.action_timer.wrapping_add(1);
     let stage = cx.state.action_state.min(2) as usize;
     // spec: combat.punch_stage_frames (decomp-derived)
     let duration = PUNCH_STAGE_FRAMES[stage];
-    // A on the first frame of punch1 -> jump kick.
-    if stage == 0 && cx.state.action_timer == 1 && cx.pressed(buttons::A, prev_buttons) {
+    // A on the first punch frames -> jump kick. (timer <= 2 covers the
+    // entry tick, on which the new action already runs, and the next.)
+    if stage == 0 && cx.state.action_timer <= 2 && cx.pressed(buttons::A, prev_buttons) {
         return super::air::enter_jump_kick(cx);
     }
-    // B chains the combo: next stage, timer restarted.
-    if stage < 2 && cx.pressed(buttons::B, prev_buttons) {
+    // B chains the combo: next stage, timer restarted. Not on the entry
+    // tick (timer == 1): the press that entered the punch must not chain it.
+    if stage < 2 && cx.state.action_timer > 1 && cx.pressed(buttons::B, prev_buttons) {
         let id = cx.state.action;
-        let r = cx.goto(id, 0);
+        cx.state.prev_action = id;
+        cx.state.action_timer = 0;
         cx.state.action_state = stage as u32 + 1;
+        cx.state.action_arg = 0;
+        cx.events.push(Event::ActionChanged { old: id, new: id });
         if move_punch {
             cx.timeline.slot = slot::MOVE_PUNCH;
         } else {
             cx.timeline.slot = slot::PUNCH;
         }
-        return r;
+        return ActionResult::Stay;
     }
+    // decomp anims (mario_update_punch_sequence, object.c:27):
+    // FIRST_PUNCH / SECOND_PUNCH / GROUND_KICK per combo stage, requested
+    // every frame. (The decomp's FIRST/SECOND_PUNCH_FAST recovery anims
+    // belong to its actionArg machine; not ported here.)
+    cx.set_mario_animation(match stage {
+        0 => anim_id::MARIO_ANIM_FIRST_PUNCH,
+        1 => anim_id::MARIO_ANIM_SECOND_PUNCH,
+        _ => anim_id::MARIO_ANIM_GROUND_KICK,
+    });
     // Speed decays; the facing stays locked.
     // spec: combat.punch_decel (decomp-derived: slope decel 0.5)
     cx.state.forward_speed = approach_zero(cx.state.forward_speed, 0.5) + slope_speed_delta(cx);
-    apply_ground_move(cx);
+    if let Some(r) = apply_ground_move(cx) {
+        return r;
+    }
     if cx.state.action_timer >= duration {
-        if move_punch && cx.input.stick_held() {
+        if move_punch && cx.stick_held() {
             return enter_walking(cx);
         }
         cx.timeline.slot = slot::IDLE;
@@ -1340,6 +1700,7 @@ fn ground_kb_tick(
     _prev_buttons: u16,
     frames: u32,
     air_kb: ActionId,
+    anim: i32,
 ) -> ActionResult {
     if let Some(r) = ground_prelude(cx) {
         // Off the floor -> the matching air knockback, not a freefall.
@@ -1351,9 +1712,22 @@ fn ground_kb_tick(
     if let Some(r) = check_slide(cx) {
         return r;
     }
+    // Timer discipline: the v1 frame windows below (the decomp's arg2
+    // values) need the explicit per-tick increment the removed
+    // auto-increment used to provide. (The decomp's
+    // common_ground_knockback_action itself never touches actionTimer; it
+    // ends on is_anim_at_end instead — a behavioral phase item. The
+    // decomp's actionArg read (arg4: air-KB arg / invincTimer) is likewise
+    // behavior; the plugin passes arg 0 and the constant air action.)
+    cx.state.action_timer = cx.state.action_timer.wrapping_add(1);
     // spec: knockback.ground_decel (decomp-derived: landing accel 0.9)
     cx.state.forward_speed = approach_zero(cx.state.forward_speed, 0.9) + slope_speed_delta(cx);
-    apply_ground_move(cx);
+    // decomp: common_ground_knockback_action (moving.c:1588) requests the
+    // action's animation every frame after the entry vel clamps.
+    cx.set_mario_animation(anim);
+    if let Some(r) = apply_ground_move(cx) {
+        return r;
+    }
     if cx.state.action_timer >= frames {
         cx.timeline.slot = slot::IDLE;
         return cx.goto(ActionId::IDLE, 0);
@@ -1363,14 +1737,14 @@ fn ground_kb_tick(
 }
 
 macro_rules! ground_kb_action {
-    ($name:ident, $label:literal, $frames:expr, $air_kb:expr) => {
+    ($name:ident, $label:literal, $frames:expr, $air_kb:expr, $anim:expr) => {
         pub struct $name;
         impl ActionHandler for $name {
             fn name(&self) -> &'static str {
                 $label
             }
             fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
-                ground_kb_tick(cx, prev_buttons, $frames, $air_kb)
+                ground_kb_tick(cx, prev_buttons, $frames, $air_kb, $anim)
             }
         }
     };
@@ -1382,37 +1756,43 @@ ground_kb_action!(
     BackwardGroundKb,
     "BackwardGroundKb",
     22,
-    ActionId::BACKWARD_AIR_KB
+    ActionId::BACKWARD_AIR_KB,
+    anim_id::MARIO_ANIM_BACKWARD_KB
 );
 ground_kb_action!(
     ForwardGroundKb,
     "ForwardGroundKb",
     20,
-    ActionId::FORWARD_AIR_KB
+    ActionId::FORWARD_AIR_KB,
+    anim_id::MARIO_ANIM_FORWARD_KB
 );
 ground_kb_action!(
     HardBackwardGroundKb,
     "HardBackwardGroundKb",
     43,
-    ActionId::BACKWARD_AIR_KB
+    ActionId::BACKWARD_AIR_KB,
+    anim_id::MARIO_ANIM_FALL_OVER_BACKWARDS
 );
 ground_kb_action!(
     HardForwardGroundKb,
     "HardForwardGroundKb",
     21,
-    ActionId::FORWARD_AIR_KB
+    ActionId::FORWARD_AIR_KB,
+    anim_id::MARIO_ANIM_LAND_ON_STOMACH
 );
 ground_kb_action!(
     SoftBackwardGroundKb,
     "SoftBackwardGroundKb",
     100,
-    ActionId::BACKWARD_AIR_KB
+    ActionId::BACKWARD_AIR_KB,
+    anim_id::MARIO_ANIM_SOFT_BACK_KB
 );
 ground_kb_action!(
     SoftForwardGroundKb,
     "SoftForwardGroundKb",
     100,
-    ActionId::FORWARD_AIR_KB
+    ActionId::FORWARD_AIR_KB,
+    anim_id::MARIO_ANIM_SOFT_FRONT_KB
 );
 
 /// Ground-bonk entry: reflect the slide vector across the wall normal,
@@ -1421,20 +1801,20 @@ ground_kb_action!(
 /// (GROUND_BONK from slides, or the backwards ground knockback from a
 /// slide-kick slide wall hit).
 pub fn enter_ground_bonk(cx: &mut ActionCx, id: ActionId) -> ActionResult {
-    let n = cx.state.wall_normal;
+    let n = cx.state.wall.map(|w| w.normal).unwrap_or(glam::Vec3::X);
     let dot = cx.state.slide_vel_x * n.x + cx.state.slide_vel_z * n.z;
     cx.state.slide_vel_x -= 2.0 * dot * n.x;
     cx.state.slide_vel_z -= 2.0 * dot * n.z;
     // Mirror the facing across the wall plane: reflect the facing vector
     // the same way as the velocity, then take its yaw.
     let (fx, fz) = (
-        crate::trig::sin(cx.state.face_yaw),
-        crate::trig::cos(cx.state.face_yaw),
+        crate::trig::sins(cx.state.face_yaw),
+        crate::trig::coss(cx.state.face_yaw),
     );
     let fdot = fx * n.x + fz * n.z;
     let rx = fx - 2.0 * fdot * n.x;
     let rz = fz - 2.0 * fdot * n.z;
-    cx.state.face_yaw = crate::trig::atan2(rx, rz);
+    cx.state.face_yaw = crate::trig::atan2s(rz, rx);
     let speed = (cx.state.slide_vel_x * cx.state.slide_vel_x
         + cx.state.slide_vel_z * cx.state.slide_vel_z)
         .sqrt()
@@ -1491,6 +1871,12 @@ impl ActionHandler for GroundBonk {
             }
             return r;
         }
+        // Timer discipline: the 32-frame window below (the decomp's arg2
+        // for act_ground_bonk) needs the explicit per-tick increment the
+        // removed auto-increment used to provide. (The decomp's
+        // common_ground_knockback_action never touches actionTimer; it
+        // ends on is_anim_at_end — a behavioral phase item.)
+        cx.state.action_timer = cx.state.action_timer.wrapping_add(1);
         // Decay the reflected slide vector toward zero (landing-style).
         let speed = (cx.state.slide_vel_x * cx.state.slide_vel_x
             + cx.state.slide_vel_z * cx.state.slide_vel_z)
@@ -1502,7 +1888,14 @@ impl ActionHandler for GroundBonk {
             cx.state.slide_vel_z *= k;
         }
         cx.state.forward_speed = nspeed;
-        apply_ground_move_with(cx, cx.state.slide_vel_x, cx.state.slide_vel_z);
+        // decomp: act_ground_bonk (moving.c:1691) requests
+        // MARIO_ANIM_GROUND_BONK every frame via
+        // common_ground_knockback_action.
+        cx.set_mario_animation(anim_id::MARIO_ANIM_GROUND_BONK);
+        match apply_ground_move_with(cx, cx.state.slide_vel_x, cx.state.slide_vel_z) {
+            GroundStep::LeftGround => return cx.goto_next(ActionId::FREEFALL, 0),
+            GroundStep::HitWall | GroundStep::None => {}
+        }
         // spec: knockback.ground_bonk_frames (decomp-derived)
         if cx.state.action_timer >= 32 {
             cx.timeline.slot = slot::IDLE;
@@ -1512,3 +1905,80 @@ impl ActionHandler for GroundBonk {
         ActionResult::Stay
     }
 }
+
+/// Shared landing-stop body.
+/// decomp: `landing_step` (stationary.c:830): stationary ground step,
+/// (re)request the animation every frame, transition when it ends. No
+/// timer/state/arg usage. NOTE: every `act_*_land_stop` calls
+/// `landing_step(...); return FALSE;` — the transition is next-tick
+/// (`GotoNext`), *not* same-tick, even though `landing_step` itself
+/// returns `set_mario_action(...)` (= TRUE). The decomp's action loop
+/// therefore does NOT re-run the new action in the same tick.
+/// The decomp's `check_common_landing_cancels` (stationary.c:839) is
+/// behavior — ported in Phase 5-7, not here.
+fn landing_step(cx: &mut ActionCx, anim: i32, end: ActionId) -> ActionResult {
+    stationary_ground_step(&mut cx.state, cx.world);
+    cx.set_mario_animation(anim);
+    if cx.is_anim_at_end() {
+        return cx.goto_next(end, 0);
+    }
+    ActionResult::Stay
+}
+
+macro_rules! land_stop_action {
+    ($name:ident, $label:literal, $anim:expr, $end:expr) => {
+        pub struct $name;
+        impl ActionHandler for $name {
+            fn name(&self) -> &'static str {
+                $label
+            }
+            fn tick(&self, cx: &mut ActionCx, _prev_buttons: u16) -> ActionResult {
+                landing_step(cx, $anim, $end)
+            }
+        }
+    };
+}
+
+land_stop_action!(
+    JumpLandStop,
+    "JumpLandStop",
+    anim_id::MARIO_ANIM_LAND_FROM_SINGLE_JUMP,
+    ActionId::IDLE
+);
+land_stop_action!(
+    DoubleJumpLandStop,
+    "DoubleJumpLandStop",
+    anim_id::MARIO_ANIM_LAND_FROM_DOUBLE_JUMP,
+    ActionId::IDLE
+);
+land_stop_action!(
+    FreefallLandStop,
+    "FreefallLandStop",
+    anim_id::MARIO_ANIM_GENERAL_LAND,
+    ActionId::IDLE
+);
+land_stop_action!(
+    SideFlipLandStop,
+    "SideFlipLandStop",
+    anim_id::MARIO_ANIM_SLIDEFLIP_LAND,
+    ActionId::IDLE
+);
+land_stop_action!(
+    TripleJumpLandStop,
+    "TripleJumpLandStop",
+    anim_id::MARIO_ANIM_TRIPLE_JUMP_LAND,
+    ActionId::IDLE
+);
+land_stop_action!(
+    BackflipLandStop,
+    "BackflipLandStop",
+    anim_id::MARIO_ANIM_TRIPLE_JUMP_LAND,
+    ActionId::IDLE
+);
+// decomp: act_long_jump_land_stop (stationary.c:937) ends in ACT_CROUCHING.
+land_stop_action!(
+    LongJumpLandStop,
+    "LongJumpLandStop",
+    anim_id::MARIO_ANIM_CROUCH_FROM_FAST_LONGJUMP,
+    ActionId::CROUCH
+);
