@@ -186,10 +186,16 @@ pub fn analog_stick_held_back(cx: &mut ActionCx) -> bool {
 pub fn check_ground_dive_or_punch(cx: &mut ActionCx, _prev_buttons: u16) -> Option<ActionResult> {
     if cx.state.input & f::B_PRESSED != 0 {
         // Speed-kick dive: the decomp sets ONLY vel.y = 20.0 here —
-        // forwardVel is unchanged. Deliberately NOT super::air::enter_dive,
-        // which adds +15 forward speed that the decomp does not apply.
+        // forwardVel is unchanged at this point. The +15 boost is applied
+        // by set_mario_action's ACT_DIVE case (mario.c:856-860).
         if cx.state.forward_speed >= 29.0 && cx.proc.stick_mag > 48.0 {
             cx.state.vel.y = 20.0;
+            // decomp: ACT_DIVE case in set_mario_action (mario.c:856).
+            let mut forward_vel = cx.state.forward_speed + 15.0;
+            if forward_vel > 48.0 {
+                forward_vel = 48.0;
+            }
+            crate::step::mario_set_forward_vel(&mut cx.state, forward_vel);
             return Some(cx.goto(ActionId::DIVE, 1));
         }
 
