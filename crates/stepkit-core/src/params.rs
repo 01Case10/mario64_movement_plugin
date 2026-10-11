@@ -47,7 +47,6 @@ pub struct MovementParams {
     /// Forward speed multiplier on jump entry. spec: jump.forward_retain
     pub jump_forward_retain: f32,
     /// Jump-height control: vy > this and A not held -> vy quartered. spec: jump.height_control_threshold
-    pub jump_height_control_threshold: f32,
     /// Gravity during a long jump. spec: physics.longjump_gravity
     pub longjump_gravity: f32,
     /// Horizontal speed gained on dive entry. spec: dive.horizontal_gain
@@ -55,14 +54,6 @@ pub struct MovementParams {
     /// Downhill accel while butt sliding. spec: slide.downhill_accel
     pub slide_downhill_accel: f32,
     // ---- steps (spec: step.*) ----
-    /// Air landing window: floor within this below the quarter-step position lands. spec: step.air_landing_snap_window
-    pub air_landing_snap_window: f32,
-    /// Ceiling window that zeroes upward velocity. spec: step.ceiling_zero_vel_window
-    pub ceiling_zero_vel_window: f32,
-    /// Ground step-up height. spec: step.ground_step_up (verify)
-    pub ground_step_up: f32,
-    /// Ground step-down snap distance; further drops walk off. spec: step.ground_step_down (verify)
-    pub ground_step_down: f32,
     // ---- collision (spec: collision.*) ----
     /// Character hitbox radius. spec: collision.radius
     pub radius: f32,
@@ -93,14 +84,9 @@ impl Default for MovementParams {
             jump_vertical_base: 42.0,
             jump_vertical_forward_factor: 0.25,
             jump_forward_retain: 0.8,
-            jump_height_control_threshold: 20.0,
             longjump_gravity: 2.0,
             dive_horizontal_gain: 15.0,
             slide_downhill_accel: 2.5,
-            air_landing_snap_window: 78.0,
-            ceiling_zero_vel_window: 160.0,
-            ground_step_up: 12.0,
-            ground_step_down: 24.0,
             radius: 50.0,
             height: 160.0,
             faithful: true,

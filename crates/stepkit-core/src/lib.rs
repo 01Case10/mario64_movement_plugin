@@ -22,13 +22,18 @@
 
 pub mod actions;
 pub mod angles;
+pub mod anim;
+pub mod anim_table;
 pub mod events;
 pub mod input;
+pub mod math_util;
 pub mod params;
+pub mod sound;
 pub mod state;
 pub mod step;
 pub mod surface;
 pub mod trig;
+pub mod trig_tables;
 pub mod world;
 
 /// Current crate version, kept in sync with `Cargo.toml`.
