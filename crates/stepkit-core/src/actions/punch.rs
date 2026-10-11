@@ -4,10 +4,11 @@
 //! `mario_update_punch_sequence` / `act_punching`
 //! (oracle/sm64/src/game/mario_actions_object.c:27, :147) and
 //! `act_move_punching` (oracle/sm64/src/game/mario_actions_moving.c:840).
-//! Sound calls, the MARIO_PUNCHING / MARIO_KICKING / MARIO_TRIPPING flags,
-//! `marioBodyState->punchState`, and the object-grab hit detection are
-//! object-interaction / render / audio concerns: out of scope, skipped with
-//! comments. Only movement, animation, and the state machine are ported.
+//! Sound calls, `marioBodyState->punchState`, and the object-grab hit
+//! detection are object-interaction / render / audio concerns: out of scope,
+//! skipped with comments. The MARIO_PUNCHING / MARIO_KICKING / MARIO_TRIPPING
+//! flags ARE ported (they are compared state, not just object interaction).
+//! Only movement, animation, and the state machine are ported.
 //!
 //! # AUDIT: decomp vs the old `ground.rs` `punch_tick` port (replaced by this file)
 //!
@@ -69,7 +70,7 @@ use super::ground;
 use super::{ActionCx, ActionHandler, ActionResult};
 use crate::anim_table as anim_id;
 use crate::input::{buttons, input_flags};
-use crate::state::{act_flags, ActionId};
+use crate::state::{act_flags, mario_flags, ActionId};
 use crate::step::{perform_ground_step, GroundStep};
 use crate::world::{
     mario_facing_downhill, mario_floor_is_slope, mario_get_floor_class, terrain_type, SurfaceClass,
@@ -125,7 +126,8 @@ fn mario_update_punch_sequence(cx: &mut ActionCx, prev_buttons: u16) -> bool {
             }
             if anim_frame >= 2 {
                 // mario_check_object_grab: no-op (no objects in scope).
-                // m->flags |= MARIO_PUNCHING: object interaction, skipped.
+                // decomp: m->flags |= MARIO_PUNCHING (object.c:54).
+                cx.state.flags |= mario_flags::PUNCHING;
             }
             if cx.state.action_arg == 2 {
                 // m->marioBodyState->punchState = (0 << 6) | 4: render, skipped.
@@ -134,7 +136,8 @@ fn mario_update_punch_sequence(cx: &mut ActionCx, prev_buttons: u16) -> bool {
         2 => {
             let anim_frame = cx.set_mario_animation(anim_id::MARIO_ANIM_FIRST_PUNCH_FAST) as i32;
             if anim_frame <= 0 {
-                // m->flags |= MARIO_PUNCHING: object interaction, skipped.
+                // decomp: m->flags |= MARIO_PUNCHING (object.c:66).
+                cx.state.flags |= mario_flags::PUNCHING;
             }
             if cx.pressed(buttons::B, prev_buttons) {
                 cx.state.action_arg = 3;
@@ -157,7 +160,8 @@ fn mario_update_punch_sequence(cx: &mut ActionCx, prev_buttons: u16) -> bool {
                 cx.state.action_arg = 4;
             }
             if anim_frame > 0 {
-                // m->flags |= MARIO_PUNCHING: object interaction, skipped.
+                // decomp: m->flags |= MARIO_PUNCHING (object.c:90).
+                cx.state.flags |= mario_flags::PUNCHING;
             }
             if cx.state.action_arg == 5 {
                 // m->marioBodyState->punchState = (1 << 6) | 4: render, skipped.
@@ -166,7 +170,8 @@ fn mario_update_punch_sequence(cx: &mut ActionCx, prev_buttons: u16) -> bool {
         5 => {
             let anim_frame = cx.set_mario_animation(anim_id::MARIO_ANIM_SECOND_PUNCH_FAST) as i32;
             if anim_frame <= 0 {
-                // m->flags |= MARIO_PUNCHING: object interaction, skipped.
+                // decomp: m->flags |= MARIO_PUNCHING (object.c:66).
+                cx.state.flags |= mario_flags::PUNCHING;
             }
             if cx.pressed(buttons::B, prev_buttons) {
                 cx.state.action_arg = 6;
@@ -188,7 +193,8 @@ fn mario_update_punch_sequence(cx: &mut ActionCx, prev_buttons: u16) -> bool {
                 // m->marioBodyState->punchState = (2 << 6) | 6: render, skipped.
             }
             if (0..8).contains(&anim_frame) {
-                // m->flags |= MARIO_KICKING: object interaction, skipped.
+                // decomp: m->flags |= MARIO_KICKING (object.c:121).
+                cx.state.flags |= mario_flags::KICKING;
             }
             if cx.is_anim_at_end() {
                 cx.timeline.slot = end_slot;
@@ -206,7 +212,8 @@ fn mario_update_punch_sequence(cx: &mut ActionCx, prev_buttons: u16) -> bool {
             crate::sound::play_mario_action_sound(&mut cx.state);
             let anim_frame = cx.set_mario_animation(anim_id::MARIO_ANIM_BREAKDANCE) as i32;
             if (2..8).contains(&anim_frame) {
-                // m->flags |= MARIO_TRIPPING: object interaction, skipped.
+                // decomp: m->flags |= MARIO_TRIPPING (object.c:135).
+                cx.state.flags |= mario_flags::TRIPPING;
             }
             if cx.is_anim_at_end() {
                 cx.timeline.slot = crouch_end_slot;
