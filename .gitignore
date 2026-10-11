@@ -1,5 +1,11 @@
 /target/
 *.orig
-oracle/
 *.pack
 .DS_Store
+
+# Phase 1 oracle: decomp checkout + build artifacts are never committed.
+/oracle/sm64/
+/oracle/build/
+
+# Fuzzer scratch files (minimized repros in traces/fuzz/*.ron are kept).
+/traces/fuzz/tmp/

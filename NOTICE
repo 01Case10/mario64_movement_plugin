@@ -1,0 +1,10 @@
+NOTICE
+
+StepKit's movement simulation (`crates/stepkit-core` and the `oracle/`
+test harness) is derived from the SM64 decompilation project
+(https://github.com/n64decomp/sm64), which is itself derived from
+Nintendo's copyrighted game. The repository's existing LICENSE file has
+not been changed by this notice, and the MIT license claim on the
+derived portions is questionable. The project owner has been flagged to
+resolve the licensing question; see docs/legal.md. This is not legal
+advice.
