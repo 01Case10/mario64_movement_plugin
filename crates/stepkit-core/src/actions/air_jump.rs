@@ -81,8 +81,8 @@ fn g_special_triple_jump() -> bool {
 /// which sets MARIO_MARIO_SOUND_PLAYED as well — same net flags. So every
 /// `play_mario_sound(..., ...)` call below is this helper.
 fn play_jump_sound(cx: &mut ActionCx) {
-    sound::play_mario_action_sound(&mut cx.state);
-    sound::play_mario_jump_sound(&mut cx.state);
+    sound::play_mario_action_sound(&mut cx.state, sound::SoundEvent::Jump);
+    sound::play_mario_jump_sound(&mut cx.state, sound::SoundEvent::Jump);
 }
 
 /// Single jump.
@@ -302,7 +302,7 @@ impl ActionHandler for WallKickAir {
         }
 
         // decomp: play_mario_jump_sound(m) — sets MARIO_MARIO_SOUND_PLAYED only.
-        sound::play_mario_jump_sound(&mut cx.state);
+        sound::play_mario_jump_sound(&mut cx.state, sound::SoundEvent::Jump);
 
         let outcome = common_air_action_step(
             cx,
