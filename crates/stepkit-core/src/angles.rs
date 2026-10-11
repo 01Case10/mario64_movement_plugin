@@ -41,15 +41,10 @@ impl Angle {
     }
 
     /// Move from `self` toward `target` by at most `step` units along the
-    /// shortest arc. Never overshoots.
+    /// shortest arc. Never overshoots. Implemented via the decomp's
+    /// `approach_s32` idiom (decomp: src/engine/math_util.c:657).
     pub fn approach(self, target: Angle, step: u16) -> Angle {
-        let diff = self.diff_to(target);
-        if diff == 0 {
-            return target;
-        }
-        let step = step as i32;
-        let clamped = diff.clamp(-step, step);
-        Angle(self.0.wrapping_add(clamped as i16))
+        crate::math_util::approach_angle(self, target, step as i32, step as i32)
     }
 
     /// Build from degrees, rounding to the nearest angle unit.
