@@ -63,6 +63,8 @@ impl ActionHandler for Dive {
         "Dive"
     }
     fn tick(&self, cx: &mut ActionCx, _prev_buttons: u16) -> ActionResult {
+        // decomp: check_common_airborne_cancels zeroes quicksandDepth (airborne.c:2059).
+        cx.state.quicksand_depth = 0.0;
         // decomp: play_mario_sound(m, actionArg == 0 ? SOUND_ACTION_THROW
         //   : SOUND_ACTION_TERRAIN_JUMP, actionArg == 0 ? SOUND_MARIO_HOOHOO : 0)
         // — the audio differs per branch; the flag side effects
@@ -150,6 +152,8 @@ impl ActionHandler for SlideKick {
         "SlideKick"
     }
     fn tick(&self, cx: &mut ActionCx, _prev_buttons: u16) -> ActionResult {
+        // decomp: check_common_airborne_cancels zeroes quicksandDepth (airborne.c:2059).
+        cx.state.quicksand_depth = 0.0;
         if cx.state.action_state == 0 && cx.state.action_timer == 0 {
             // decomp: play_mario_sound(m, SOUND_ACTION_TERRAIN_JUMP, SOUND_MARIO_HOOHOO)
             // — ACTION_SOUND_PLAYED + MARIO_SOUND_PLAYED; audio skipped.
@@ -220,6 +224,8 @@ impl ActionHandler for JumpKick {
         "JumpKick"
     }
     fn tick(&self, cx: &mut ActionCx, _prev_buttons: u16) -> ActionResult {
+        // decomp: check_common_airborne_cancels zeroes quicksandDepth (airborne.c:2059).
+        cx.state.quicksand_depth = 0.0;
         if cx.state.action_state == 0 {
             // decomp: play_sound_if_no_flag(m, SOUND_MARIO_PUNCH_HOO, MARIO_ACTION_SOUND_PLAYED)
             sound::play_sound_if_no_flag(&mut cx.state, mario_flags::ACTION_SOUND_PLAYED);
@@ -234,8 +240,8 @@ impl ActionHandler for JumpKick {
             // decomp: m->marioBodyState->punchState = (2 << 6) | 6 — body state; no objects in scope.
         }
         if anim_frame >= 0 && anim_frame < 8 {
-            // decomp: m->flags |= MARIO_KICKING — read only by object
-            // interactions (out of scope); skipped.
+            // decomp: m->flags |= MARIO_KICKING (airborne.c:1646).
+            cx.state.flags |= crate::state::mario_flags::KICKING;
         }
 
         update_air_without_turn(cx);
@@ -266,6 +272,8 @@ impl ActionHandler for ForwardRollout {
         "ForwardRollout"
     }
     fn tick(&self, cx: &mut ActionCx, _prev_buttons: u16) -> ActionResult {
+        // decomp: check_common_airborne_cancels zeroes quicksandDepth (airborne.c:2059).
+        cx.state.quicksand_depth = 0.0;
         if cx.state.action_state == 0 {
             cx.state.vel.y = 30.0;
             cx.state.action_state = 1;
@@ -320,6 +328,8 @@ impl ActionHandler for BackwardRollout {
         "BackwardRollout"
     }
     fn tick(&self, cx: &mut ActionCx, _prev_buttons: u16) -> ActionResult {
+        // decomp: check_common_airborne_cancels zeroes quicksandDepth (airborne.c:2059).
+        cx.state.quicksand_depth = 0.0;
         if cx.state.action_state == 0 {
             cx.state.vel.y = 30.0;
             cx.state.action_state = 1;
@@ -380,6 +390,8 @@ impl ActionHandler for GroundPound {
         "GroundPound"
     }
     fn tick(&self, cx: &mut ActionCx, _prev_buttons: u16) -> ActionResult {
+        // decomp: check_common_airborne_cancels zeroes quicksandDepth (airborne.c:2059).
+        cx.state.quicksand_depth = 0.0;
         // decomp: play_sound_if_no_flag(m, SOUND_ACTION_THROW, MARIO_ACTION_SOUND_PLAYED)
         sound::play_sound_if_no_flag(&mut cx.state, mario_flags::ACTION_SOUND_PLAYED);
 
@@ -471,6 +483,8 @@ impl ActionHandler for GroundPoundLand {
         "GroundPoundLand"
     }
     fn tick(&self, cx: &mut ActionCx, _prev_buttons: u16) -> ActionResult {
+        // decomp: check_common_airborne_cancels zeroes quicksandDepth (airborne.c:2059).
+        cx.state.quicksand_depth = 0.0;
         cx.state.action_state = 1;
         let input = cx.state.input;
         if input & input_flags::STOMPED != 0 {
