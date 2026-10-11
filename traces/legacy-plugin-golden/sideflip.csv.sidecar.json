@@ -1,0 +1,7 @@
+{
+  "scenario_id": "sideflip",
+  "produced_by": "stepkit trace run",
+  "produced_at": "2026-10-07",
+  "faithful_params": true,
+  "notes": "phase 1 pipeline run"
+}
