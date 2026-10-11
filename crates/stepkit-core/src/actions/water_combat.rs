@@ -162,7 +162,7 @@ impl ActionHandler for WaterPunch {
         // field. Skipped with comment per the module convention.
 
         // decomp: submerged.c:831 — sets MARIO_ACTION_SOUND_PLAYED.
-        sound::play_sound_if_no_flag(&mut cx.state, mario_flags::ACTION_SOUND_PLAYED);
+        sound::play_sound_if_no_flag(&mut cx.state, sound::SoundEvent::Swim, mario_flags::ACTION_SOUND_PLAYED);
 
         // decomp: submerged.c:833-861. All `set_mario_action` returns here
         // are discarded and the function falls through to `return FALSE`,
@@ -305,7 +305,7 @@ impl ActionHandler for WaterShocked {
     }
     fn tick(&self, cx: &mut ActionCx, _prev_buttons: u16) -> ActionResult {
         // decomp: submerged.c:893 — sets MARIO_ACTION_SOUND_PLAYED.
-        sound::play_sound_if_no_flag(&mut cx.state, mario_flags::ACTION_SOUND_PLAYED);
+        sound::play_sound_if_no_flag(&mut cx.state, sound::SoundEvent::Swim, mario_flags::ACTION_SOUND_PLAYED);
         // NOTE: play_sound(SOUND_MOVING_SHOCKED, ...) (submerged.c:894) is a
         // plain play_sound — no flag side effect — so audio-only; skipped.
         // NOTE: set_camera_shake_from_hit(SHAKE_SHOCK) (submerged.c:895) is
@@ -384,7 +384,7 @@ impl ActionHandler for Drowning {
         }
 
         // decomp: submerged.c:933 — sets MARIO_ACTION_SOUND_PLAYED.
-        sound::play_sound_if_no_flag(&mut cx.state, mario_flags::ACTION_SOUND_PLAYED);
+        sound::play_sound_if_no_flag(&mut cx.state, sound::SoundEvent::Swim, mario_flags::ACTION_SOUND_PLAYED);
 
         // decomp: submerged.c:934-935.
         stationary_slow_down(&mut cx.state);
