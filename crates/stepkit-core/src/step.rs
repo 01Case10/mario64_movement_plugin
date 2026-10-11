@@ -440,6 +440,8 @@ pub fn stationary_ground_step(
     state: &mut CharacterState,
     world: &dyn CollisionWorld,
 ) -> GroundStep {
+    // decomp: mario_set_forward_vel(m, 0.0f) (mario_step.c:240).
+    mario_set_forward_vel(state, 0.0);
     let mut take_step = mario_update_moving_sand(state);
     take_step |= mario_update_windy_ground(state);
     if take_step {
