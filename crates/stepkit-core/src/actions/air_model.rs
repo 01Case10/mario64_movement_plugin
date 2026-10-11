@@ -160,9 +160,9 @@ pub fn common_air_action_step(
     animation: i32,
     step_arg: u32,
 ) -> CommonAirOutcome {
-    // decomp: check_common_airborne_cancels sets quicksandDepth = 0
-    // (mario_actions_airborne.c:2059) for all airborne actions.
-    cx.state.quicksand_depth = 0.0;
+    // NOTE: quicksandDepth zeroing is now centralized in
+    // `execute_airborne_action` via `check_common_airborne_cancels`.
+    // Do NOT duplicate it here.
     update_air_without_turn(cx);
 
     let step_result = perform_air_step(&mut cx.state, cx.world, step_arg);
@@ -331,4 +331,75 @@ pub fn check_water_plunge(cx: &mut ActionCx) -> Option<ActionResult> {
         return Some(crate::actions::water::enter_water_plunge(cx, wl));
     }
     None
+}
+
+/// decomp: `check_common_airborne_cancels` (`src/game/mario_actions_airborne.c:2050`).
+/// Returns the transition if a cancel was taken, None otherwise.
+/// Centralized here — handlers must NOT duplicate this logic.
+pub fn check_common_airborne_cancels(cx: &mut ActionCx) -> Option<ActionResult> {
+    // decomp: if (m->input & INPUT_SQUISHED) return drop_and_set_mario_action(m, ACT_SQUISHED, 0);
+    // No squish input in the scenario set — skipped, but the structure is preserved.
+    
+    // decomp: vertical wind check — no vertical wind surfaces in the scenario set.
+    
+    // decomp: m->quicksandDepth = 0.0f (mario_actions_airborne.c:2059).
+    // This is the SINGLE place where airborne actions zero quicksand depth.
+    // Handlers must not duplicate this.
+    cx.state.quicksand_depth = 0.0;
+    
+    None
+}
+
+/// decomp: `play_far_fall_sound` (`src/game/mario_actions_airborne.c:24`).
+/// Sets MARIO_UNKNOWN_18 when falling far (peakHeight - pos.y > 1150).
+/// Called from `mario_execute_airborne_action` before dispatching.
+/// Centralized here — handlers must NOT duplicate this logic.
+pub fn play_far_fall_sound(cx: &mut ActionCx) {
+    let action = cx.state.action;
+    // decomp: if (!(action & ACT_FLAG_INVULNERABLE) && action != ACT_TWIRLING
+    //          && action != ACT_FLYING && !(m->flags & MARIO_UNKNOWN_18))
+    let invuln = action.0 & crate::state::act_flags::INVULNERABLE != 0;
+    if !invuln
+        && action != ActionId::TWIRLING
+        && action != ActionId::FLYING
+        && cx.state.flags & mario_flags::UNKNOWN_18 == 0
+    {
+        if cx.state.peak_height - cx.state.pos.y > 1150.0 {
+            // decomp: play_sound(SOUND_MARIO_WAAAOOOW, ...) — audio skipped,
+            // the flag is real state. Also push the sound event.
+            cx.state.flags |= mario_flags::UNKNOWN_18;
+            if (cx.state.sound_count as usize) < cx.state.sounds.len() {
+                cx.state.sounds[cx.state.sound_count as usize] =
+                    Some(crate::sound::SoundEvent::FallScream);
+                cx.state.sound_count += 1;
+            }
+        }
+    }
+}
+
+/// decomp: `mario_execute_airborne_action` (`src/game/mario_actions_airborne.c:2063`).
+/// Centralized dispatcher for all airborne actions. Runs the common cancels,
+/// the far-fall sound, then delegates to the specific action handler.
+///
+/// This is the SINGLE entry point for airborne actions. The individual
+/// handlers must NOT duplicate the cancels or fall-sound logic.
+pub fn execute_airborne_action(
+    cx: &mut ActionCx,
+    prev_buttons: u16,
+    registry: &super::ActionRegistry,
+) -> ActionResult {
+    // decomp: if (check_common_airborne_cancels(m)) return TRUE;
+    if let Some(result) = check_common_airborne_cancels(cx) {
+        return result;
+    }
+    
+    // decomp: play_far_fall_sound(m);
+    play_far_fall_sound(cx);
+    
+    // decomp: switch (m->action) { case ACT_JUMP: cancel = act_jump(m); break; ... }
+    // The registry dispatch replaces the switch.
+    match registry.get(cx.state.action) {
+        Some(handler) => handler.tick(cx, prev_buttons),
+        None => ActionResult::Stay,
+    }
 }
