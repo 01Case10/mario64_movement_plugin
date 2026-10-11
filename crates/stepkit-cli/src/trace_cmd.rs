@@ -9,7 +9,13 @@ use stepkit_trace::trace::{Trace, TraceFrame};
 
 fn load_scenario(path: &str) -> Result<Scenario, String> {
     let text = std::fs::read_to_string(path).map_err(|e| format!("read {path}: {e}"))?;
-    ron::de::from_str(&text).map_err(|e| format!("parse {path}: {e}"))
+    let scenario: Scenario = ron::de::from_str(&text).map_err(|e| format!("parse {path}: {e}"))?;
+    // Strict integer-geometry contract (plan §6 Phase 2, ST-02): reject
+    // non-integral or out-of-range geometry at load time.
+    scenario
+        .validate_geometry()
+        .map_err(|e| format!("{path}: {e}"))?;
+    Ok(scenario)
 }
 
 fn load_golden(path: &str) -> Result<Vec<TraceFrame>, String> {
@@ -140,7 +146,7 @@ fn teacher_forced_diff(scenario: &Scenario, golden: &[TraceFrame]) -> CompareRes
         f.action_arg = out.action_arg;
         f.floor_y = out.floor_y.unwrap_or(0.0);
         f.ceil_y = out.ceil_y.unwrap_or(0.0);
-        f.wall_hit = out.wall_hit as u8;
+        f.wall_hit = out.wall.is_some() as u8;
         actual_frames.push(f);
     }
     // Compare golden[1..] against the one-tick predictions.

@@ -10,7 +10,10 @@
 //! * `anim retime`     - resample a clip to the manifest grid
 
 mod anim_cmd;
+mod fuzz;
 mod m64;
+mod oracle_cmd;
+mod parity_diff;
 mod trace_cmd;
 
 use clap::{Parser, Subcommand};
@@ -40,6 +43,44 @@ enum Commands {
     Anim {
         #[command(subcommand)]
         command: AnimCommands,
+    },
+    /// Oracle tooling: run a scenario through the native decomp oracle.
+    Oracle {
+        #[command(subcommand)]
+        command: OracleCommands,
+    },
+    /// Random-input differential fuzzer (plan §7.4).
+    Fuzz {
+        /// Comma-separated fixed seeds (CI mode). Overrides --seed-base/--seed-count/--random.
+        #[arg(long)]
+        seeds: Option<String>,
+        /// First seed of the deterministic sequence (default mode).
+        #[arg(long, default_value_t = 0)]
+        seed_base: u64,
+        /// Number of seeds to run from seed_base (or of random seeds with --random).
+        #[arg(long, default_value_t = 8)]
+        seed_count: u32,
+        /// Nightly mode: fresh random seeds, printed for reproducibility.
+        #[arg(long, default_value_t = false)]
+        random: bool,
+        /// Frames per fuzz case.
+        #[arg(long, default_value_t = 600)]
+        frames: u32,
+        /// Comma-separated geometry subset (see --list-geoms). Default: all.
+        #[arg(long)]
+        geoms: Option<String>,
+        /// Skip automatic minimisation of diverging inputs.
+        #[arg(long, default_value_t = false)]
+        no_minimize: bool,
+        /// List geometry presets and exit.
+        #[arg(long, default_value_t = false)]
+        list_geoms: bool,
+        /// Directory for minimized repro scenarios and temp files.
+        #[arg(long, default_value = "traces/fuzz")]
+        out_dir: String,
+        /// Only print failures.
+        #[arg(long, default_value_t = false)]
+        quiet: bool,
     },
 }
 
@@ -114,6 +155,26 @@ enum AnimCommands {
     },
 }
 
+#[derive(Subcommand)]
+enum OracleCommands {
+    Run {
+        #[arg(long)]
+        scenario: String,
+        #[arg(long)]
+        out: String,
+    },
+    Diff {
+        #[arg(long)]
+        scenario: Option<String>,
+        #[arg(long)]
+        all: bool,
+        #[arg(long)]
+        fields: Option<String>,
+        #[arg(long, default_value = "free")]
+        mode: String,
+    },
+}
+
 fn run() -> Result<i32, String> {
     let cli = Cli::parse();
     match cli.command {
@@ -169,6 +230,53 @@ fn run() -> Result<i32, String> {
                 Ok(0)
             }
         },
+        Commands::Oracle { command } => match command {
+            OracleCommands::Run { scenario, out } => {
+                oracle_cmd::run(&scenario, &out)?;
+                Ok(0)
+            }
+            OracleCommands::Diff {
+                scenario,
+                all,
+                fields,
+                mode,
+            } => {
+                if scenario.is_some() && all {
+                    return Err("--scenario and --all are mutually exclusive".into());
+                }
+                if scenario.is_none() && !all {
+                    return Err("either --scenario or --all is required".into());
+                }
+                let passed = parity_diff::diff(scenario.as_deref(), all, fields.as_deref(), &mode)?;
+                Ok(i32::from(!passed))
+            }
+        },
+        Commands::Fuzz {
+            seeds,
+            seed_base,
+            seed_count,
+            random,
+            frames,
+            geoms,
+            no_minimize,
+            list_geoms,
+            out_dir,
+            quiet,
+        } => {
+            let passed = fuzz::fuzz(
+                seeds.as_deref(),
+                seed_base,
+                seed_count,
+                random,
+                frames,
+                geoms.as_deref(),
+                no_minimize,
+                list_geoms,
+                &out_dir,
+                quiet,
+            )?;
+            Ok(i32::from(!passed))
+        }
     }
 }
 
