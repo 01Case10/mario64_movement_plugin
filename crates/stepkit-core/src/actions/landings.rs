@@ -273,7 +273,7 @@ fn common_landing_action(cx: &mut ActionCx, anim: i32, air_action: ActionId) -> 
     cx.set_mario_animation(anim);
     // decomp: play_mario_landing_sound_once — audio skipped, but the
     // MARIO_ACTION_SOUND_PLAYED flag is real compared state.
-    crate::sound::play_mario_landing_sound_once(&mut cx.state);
+    crate::sound::play_mario_landing_sound_once(&mut cx.state, crate::sound::SoundEvent::Landing);
 
     // decomp: if (m->floor->type >= SURFACE_SHALLOW_QUICKSAND &&
     //                m->floor->type <= SURFACE_MOVING_QUICKSAND)
@@ -466,6 +466,7 @@ impl ActionHandler for LongJumpLand {
         // when the stick is released — audio skipped, flag is real state.
         crate::sound::play_sound_if_no_flag(
             &mut cx.state,
+            crate::sound::SoundEvent::Landing,
             crate::state::mario_flags::MARIO_SOUND_PLAYED,
         );
         // The FAST/SLOW anim picks on oMarioLongJumpIsSlow (not modeled in
@@ -523,6 +524,7 @@ impl ActionHandler for TripleJumpLand {
         // when the stick is released — audio skipped, flag is real state.
         crate::sound::play_sound_if_no_flag(
             &mut cx.state,
+            crate::sound::SoundEvent::Landing,
             crate::state::mario_flags::MARIO_SOUND_PLAYED,
         );
         common_landing_action(cx, anim_id::MARIO_ANIM_TRIPLE_JUMP_LAND, ActionId::FREEFALL)
@@ -553,6 +555,7 @@ impl ActionHandler for BackflipLand {
         // when the stick is released — audio skipped, flag is real state.
         crate::sound::play_sound_if_no_flag(
             &mut cx.state,
+            crate::sound::SoundEvent::Landing,
             crate::state::mario_flags::MARIO_SOUND_PLAYED,
         );
         common_landing_action(cx, anim_id::MARIO_ANIM_TRIPLE_JUMP_LAND, ActionId::FREEFALL)
