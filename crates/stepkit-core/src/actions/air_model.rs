@@ -160,6 +160,9 @@ pub fn common_air_action_step(
     animation: i32,
     step_arg: u32,
 ) -> CommonAirOutcome {
+    // decomp: check_common_airborne_cancels sets quicksandDepth = 0
+    // (mario_actions_airborne.c:2059) for all airborne actions.
+    cx.state.quicksand_depth = 0.0;
     update_air_without_turn(cx);
 
     let step_result = perform_air_step(&mut cx.state, cx.world, step_arg);
