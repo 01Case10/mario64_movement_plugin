@@ -131,7 +131,7 @@ pub fn quicksand_jump_land_action(
 
         // decomp: play_mario_jump_sound — audio skipped, MARIO_SOUND_PLAYED
         // flag is real compared state.
-        crate::sound::play_mario_jump_sound(&mut cx.state);
+        crate::sound::play_mario_jump_sound(&mut cx.state, crate::sound::SoundEvent::Jump);
         cx.set_mario_animation(animation1);
     } else {
         if cx.state.action_timer >= 13 {
