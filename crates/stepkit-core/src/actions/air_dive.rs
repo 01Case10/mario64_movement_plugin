@@ -69,8 +69,8 @@ impl ActionHandler for Dive {
         //   : SOUND_ACTION_TERRAIN_JUMP, actionArg == 0 ? SOUND_MARIO_HOOHOO : 0)
         // — the audio differs per branch; the flag side effects
         // (ACTION_SOUND_PLAYED + MARIO_SOUND_PLAYED) are identical. Audio skipped.
-        sound::play_mario_action_sound(&mut cx.state);
-        sound::play_mario_jump_sound(&mut cx.state);
+        sound::play_mario_action_sound(&mut cx.state, sound::SoundEvent::Dive);
+        sound::play_mario_jump_sound(&mut cx.state, sound::SoundEvent::Dive);
 
         cx.set_mario_animation(anim_table::MARIO_ANIM_DIVE);
         // decomp: mario_check_object_grab / mario_grab_used_object — no objects in scope.
@@ -157,8 +157,8 @@ impl ActionHandler for SlideKick {
         if cx.state.action_state == 0 && cx.state.action_timer == 0 {
             // decomp: play_mario_sound(m, SOUND_ACTION_TERRAIN_JUMP, SOUND_MARIO_HOOHOO)
             // — ACTION_SOUND_PLAYED + MARIO_SOUND_PLAYED; audio skipped.
-            sound::play_mario_action_sound(&mut cx.state);
-            sound::play_mario_jump_sound(&mut cx.state);
+            sound::play_mario_action_sound(&mut cx.state, sound::SoundEvent::Dive);
+            sound::play_mario_jump_sound(&mut cx.state, sound::SoundEvent::Dive);
             cx.set_mario_animation(anim_table::MARIO_ANIM_SLIDE_KICK);
         }
 
@@ -191,7 +191,7 @@ impl ActionHandler for SlideKick {
                     let _ = cx.goto_next(ActionId::SLIDE_KICK_SLIDE, 0);
                 }
                 // decomp: play_mario_landing_sound → ACTION_SOUND_PLAYED.
-                sound::play_mario_landing_sound_once(&mut cx.state);
+                sound::play_mario_landing_sound_once(&mut cx.state, sound::SoundEvent::Landing);
             }
             AirStep::HitWall => {
                 if cx.state.vel.y > 0.0 {
@@ -228,7 +228,7 @@ impl ActionHandler for JumpKick {
         cx.state.quicksand_depth = 0.0;
         if cx.state.action_state == 0 {
             // decomp: play_sound_if_no_flag(m, SOUND_MARIO_PUNCH_HOO, MARIO_ACTION_SOUND_PLAYED)
-            sound::play_sound_if_no_flag(&mut cx.state, mario_flags::ACTION_SOUND_PLAYED);
+            sound::play_sound_if_no_flag(&mut cx.state, sound::SoundEvent::Dive, mario_flags::ACTION_SOUND_PLAYED);
             // decomp: m->marioObj->header.gfx.animInfo.animID = -1 — forces anim reinit.
             cx.state.anim.id = -1;
             cx.set_mario_animation(anim_table::MARIO_ANIM_AIR_KICK);
@@ -281,8 +281,8 @@ impl ActionHandler for ForwardRollout {
 
         // decomp: play_mario_sound(m, SOUND_ACTION_TERRAIN_JUMP, 0) —
         // ACTION_SOUND_PLAYED + MARIO_SOUND_PLAYED; audio skipped.
-        sound::play_mario_action_sound(&mut cx.state);
-        sound::play_mario_jump_sound(&mut cx.state);
+        sound::play_mario_action_sound(&mut cx.state, sound::SoundEvent::Dive);
+        sound::play_mario_jump_sound(&mut cx.state, sound::SoundEvent::Dive);
 
         update_air_without_turn(cx);
 
@@ -303,7 +303,7 @@ impl ActionHandler for ForwardRollout {
                 // return discarded → next-tick; the landing sound then sets
                 // ACTION_SOUND_PLAYED on the NEW action's flags (order kept).
                 let _ = cx.goto_next(ActionId::FREEFALL_LAND_STOP, 0);
-                sound::play_mario_landing_sound_once(&mut cx.state);
+                sound::play_mario_landing_sound_once(&mut cx.state, sound::SoundEvent::Landing);
             }
             AirStep::HitWall => {
                 mario_set_forward_vel(&mut cx.state, 0.0);
@@ -337,8 +337,8 @@ impl ActionHandler for BackwardRollout {
 
         // decomp: play_mario_sound(m, SOUND_ACTION_TERRAIN_JUMP, 0) —
         // ACTION_SOUND_PLAYED + MARIO_SOUND_PLAYED; audio skipped.
-        sound::play_mario_action_sound(&mut cx.state);
-        sound::play_mario_jump_sound(&mut cx.state);
+        sound::play_mario_action_sound(&mut cx.state, sound::SoundEvent::Dive);
+        sound::play_mario_jump_sound(&mut cx.state, sound::SoundEvent::Dive);
 
         update_air_without_turn(cx);
 
@@ -359,7 +359,7 @@ impl ActionHandler for BackwardRollout {
                 // return discarded → next-tick; the landing sound then sets
                 // ACTION_SOUND_PLAYED on the NEW action's flags (order kept).
                 let _ = cx.goto_next(ActionId::FREEFALL_LAND_STOP, 0);
-                sound::play_mario_landing_sound_once(&mut cx.state);
+                sound::play_mario_landing_sound_once(&mut cx.state, sound::SoundEvent::Landing);
             }
             AirStep::HitWall => {
                 mario_set_forward_vel(&mut cx.state, 0.0);
@@ -393,7 +393,7 @@ impl ActionHandler for GroundPound {
         // decomp: check_common_airborne_cancels zeroes quicksandDepth (airborne.c:2059).
         cx.state.quicksand_depth = 0.0;
         // decomp: play_sound_if_no_flag(m, SOUND_ACTION_THROW, MARIO_ACTION_SOUND_PLAYED)
-        sound::play_sound_if_no_flag(&mut cx.state, mario_flags::ACTION_SOUND_PLAYED);
+        sound::play_sound_if_no_flag(&mut cx.state, sound::SoundEvent::Dive, mario_flags::ACTION_SOUND_PLAYED);
 
         if cx.state.action_state == 0 {
             if cx.state.action_timer < 10 {
@@ -443,7 +443,7 @@ impl ActionHandler for GroundPound {
                         let _ = cx.goto_next(ACT_BUTT_STUCK_IN_GROUND, 0);
                     } else {
                         // decomp: play_mario_heavy_landing_sound → ACTION_SOUND_PLAYED.
-                        sound::play_mario_heavy_landing_sound_once(&mut cx.state);
+                        sound::play_mario_heavy_landing_sound_once(&mut cx.state, sound::SoundEvent::Landing);
                         if !check_fall_damage(cx, ActionId::HARD_BACKWARD_GROUND_KB) {
                             // decomp: particleFlags |= PARTICLE_MIST_CIRCLE |
                             //   PARTICLE_HORIZONTAL_STAR — visual, skipped.
