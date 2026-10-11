@@ -180,7 +180,11 @@ pub fn common_air_action_step(
                 // decomp: check_fall_damage's TRUE return (via drop_and_set_mario_action)
                 // is DISCARDED by the caller (act_freefall etc. return FALSE), so the
                 // hard-fall action starts next tick, not same-tick.
-                Some(cx.goto_next(cx.state.action, cx.state.action_arg))
+                // NOTE: check_fall_damage already performed the transition via
+                // cx.goto_next internally. Do NOT do another goto_next here,
+                // as that would double-transition and corrupt prev_action.
+                // Return Stay to end the tick; the new action runs next tick.
+                Some(ActionResult::Stay)
             }
         }
         AirStep::HitWall => {
@@ -291,8 +295,11 @@ pub fn check_fall_damage(cx: &mut ActionCx, hard_fall_action: ActionId) -> bool 
         };
         cx.state.hurt_counter = cx.state.hurt_counter.saturating_add(dmg as u16);
         // decomp: drop_and_set_mario_action (object interaction skipped).
+        // NOTE: Use goto_next (not goto) because the decomp's act_freefall
+        // returns FALSE after common_air_action_step, stopping the outer
+        // loop. The new action runs next tick, not this tick.
         let id = super::entry::set_mario_action_moving(cx, hard_fall_action);
-        cx.goto(id, 4);
+        cx.goto_next(id, 4);
         return true;
     }
     // decomp: damageHeight = 1150 (600 for ground pound — dead code due to
