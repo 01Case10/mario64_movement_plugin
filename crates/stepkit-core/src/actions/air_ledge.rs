@@ -194,7 +194,7 @@ impl ActionHandler for LedgeGrab {
         if cx.state.action_arg == 0 {
             // decomp: play_sound_if_no_flag(m, SOUND_MARIO_WHOA, MARIO_MARIO_SOUND_PLAYED);
             // audio skipped; the flag is real state.
-            crate::sound::play_sound_if_no_flag(&mut cx.state, mario_flags::MARIO_SOUND_PLAYED);
+            crate::sound::play_sound_if_no_flag(&mut cx.state, crate::sound::SoundEvent::Jump, mario_flags::MARIO_SOUND_PLAYED);
         }
 
         crate::step::stop_and_set_height_to_floor(&mut cx.state);
@@ -251,7 +251,7 @@ impl ActionHandler for LedgeClimbSlow {
         if cx.state.action_timer == 10 {
             // decomp: play_sound_if_no_flag(m, SOUND_MARIO_EEUH, MARIO_MARIO_SOUND_PLAYED);
             // audio skipped; the flag is real state.
-            crate::sound::play_sound_if_no_flag(&mut cx.state, mario_flags::MARIO_SOUND_PLAYED);
+            crate::sound::play_sound_if_no_flag(&mut cx.state, crate::sound::SoundEvent::Jump, mario_flags::MARIO_SOUND_PLAYED);
         }
 
         let transition =
@@ -288,7 +288,7 @@ impl ActionHandler for LedgeClimbDown {
 
         // decomp: play_sound_if_no_flag(m, SOUND_MARIO_WHOA, MARIO_MARIO_SOUND_PLAYED);
         // audio skipped; the flag is real state.
-        crate::sound::play_sound_if_no_flag(&mut cx.state, mario_flags::MARIO_SOUND_PLAYED);
+        crate::sound::play_sound_if_no_flag(&mut cx.state, crate::sound::SoundEvent::Jump, mario_flags::MARIO_SOUND_PLAYED);
 
         let transition =
             update_ledge_climb(cx, anim_table::MARIO_ANIM_CLIMB_DOWN_LEDGE, ActionId::LEDGE_GRAB);
@@ -316,7 +316,7 @@ impl ActionHandler for LedgeClimbFast {
 
         // decomp: play_sound_if_no_flag(m, SOUND_MARIO_UH2, MARIO_MARIO_SOUND_PLAYED);
         // audio skipped; the flag is real state.
-        crate::sound::play_sound_if_no_flag(&mut cx.state, mario_flags::MARIO_SOUND_PLAYED);
+        crate::sound::play_sound_if_no_flag(&mut cx.state, crate::sound::SoundEvent::Jump, mario_flags::MARIO_SOUND_PLAYED);
 
         let transition =
             update_ledge_climb(cx, anim_table::MARIO_ANIM_FAST_LEDGE_GRAB, ActionId::IDLE);
