@@ -203,7 +203,7 @@ impl ActionHandler for StartHanging {
 
         cx.set_mario_animation(anim_id::MARIO_ANIM_HANG_ON_CEILING);
         // decomp: play_sound_if_no_flag(m, SOUND_ACTION_HANGING_STEP, MARIO_ACTION_SOUND_PLAYED).
-        crate::sound::play_sound_if_no_flag(&mut cx.state, mario_flags::ACTION_SOUND_PLAYED);
+        crate::sound::play_sound_if_no_flag(&mut cx.state, crate::sound::SoundEvent::Jump, mario_flags::ACTION_SOUND_PLAYED);
         update_hang_stationary(cx);
 
         if cx.is_anim_at_end() {
