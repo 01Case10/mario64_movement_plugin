@@ -634,6 +634,9 @@ impl ActionHandler for Crawl {
         }
 
         cx.proc.intended_mag *= 0.1;
+        // decomp: m->intendedMag *= 0.1f (moving.c:942) — the compared
+        // state field, not just the proc copy.
+        cx.state.intended_mag *= 0.1;
 
         update_walking_speed_inline(cx);
 
