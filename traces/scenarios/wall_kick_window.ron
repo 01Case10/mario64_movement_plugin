@@ -1,0 +1,61 @@
+(
+    id: "wall_kick_window",
+    tags: [
+        "air",
+        "wall",
+    ],
+    geometry: [
+        Box((
+            min: (-2000, -100, -2000),
+            max: (2000, 0, 2000),
+            kind: 0,
+        )),
+        // Wall face at z=500, spanning the whole floor width.
+        Box((
+            min: (-2000, -100, 500),
+            max: (2000, 400, 600),
+            kind: 0,
+        )),
+    ],
+    start: (
+        pos: (0, 0, 0),
+        yaw_deg: 0.0,
+        action: "Idle",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        // Run up and jump (A pressed on frame 22) into the wall at fwd ~20.
+        // The jump's air step hits the wall on frame 25, setting
+        // ACT_AIR_HIT_WALL (act_air_hit_wall itself first runs on frame 26).
+        // A is freshly pressed on frame 26, inside the ++actionTimer <= 2
+        // window -> ACT_WALL_KICK_AIR. (Pressing A on the hit frame itself
+        // does not kick: the A press is consumed by the jump, and the
+        // hitting action returns without running act_air_hit_wall.)
+        Hold(
+            frames: 22,
+            stick: (0, 80),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, 80),
+            buttons: 1,
+        ),
+        Hold(
+            frames: 3,
+            stick: (0, 0),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, 0),
+            buttons: 1,
+        ),
+        Hold(
+            frames: 40,
+            stick: (0, 0),
+            buttons: 0,
+        ),
+    ],
+    compare: AirDefault,
+)

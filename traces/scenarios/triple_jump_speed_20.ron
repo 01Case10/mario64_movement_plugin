@@ -1,0 +1,58 @@
+(
+    id: "triple_jump_speed_20",
+    tags: [
+        "air",
+        "jump",
+        "triple-jump",
+    ],
+    geometry: [
+        Box((
+            min: (-4000, -100, -4000),
+            max: (4000, 0, 4000),
+            kind: 0,
+        )),
+    ],
+    start: (
+        pos: (0, 0, 0),
+        yaw_deg: 0.0,
+        action: "Idle",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        Hold(
+            frames: 45,
+            stick: (0, 80),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, 80),
+            buttons: 1,
+        ),
+        Hold(
+            frames: 13,
+            stick: (0, 80),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, 80),
+            buttons: 1,
+        ),
+        Hold(
+            frames: 14,
+            stick: (0, 80),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, 80),
+            buttons: 1,
+        ),
+        Hold(
+            frames: 40,
+            stick: (0, 80),
+            buttons: 0,
+        ),
+    ],
+    compare: AirDefault,
+)

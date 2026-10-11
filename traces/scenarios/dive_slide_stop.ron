@@ -1,0 +1,41 @@
+(
+    id: "dive_slide_stop",
+    tags: [
+        "air",
+        "dive",
+    ],
+    geometry: [
+        Box((
+            min: (-4000, -100, -4000),
+            max: (4000, 0, 4000),
+            kind: 0,
+        )),
+    ],
+    start: (
+        pos: (0, 0, 0),
+        yaw_deg: 0.0,
+        action: "Idle",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        // Same dive entry as dive_ground.ron (run, then B at speed).
+        Hold(
+            frames: 60,
+            stick: (0, 80),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, 80),
+            buttons: 2,
+        ),
+        // Hands off: the dive lands into DIVE_SLIDE and decelerates to a stop.
+        Hold(
+            frames: 80,
+            stick: (0, 0),
+            buttons: 0,
+        ),
+    ],
+    compare: AirDefault,
+)

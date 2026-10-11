@@ -1,0 +1,40 @@
+(
+    id: "quicksand_deep",
+    tags: [
+        "ground",
+        "quicksand",
+        "surface",
+    ],
+    geometry: [
+        Box((
+            min: (-2000, -100, -2000),
+            max: (2000, 0, 2000),
+            kind: 5,
+        )),
+    ],
+    start: (
+        pos: (0, 0, 0),
+        yaw_deg: 0.0,
+        action: "Idle",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        Hold(
+            frames: 50,
+            stick: (0, 80),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, 80),
+            buttons: 1,
+        ),
+        Hold(
+            frames: 30,
+            stick: (0, 80),
+            buttons: 0,
+        ),
+    ],
+    compare: GroundDefault,
+)

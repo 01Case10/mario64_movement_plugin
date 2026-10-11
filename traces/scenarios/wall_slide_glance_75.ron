@@ -1,0 +1,33 @@
+(
+    id: "wall_slide_glance_75",
+    tags: [
+        "ground",
+        "wall",
+    ],
+    geometry: [
+        Box((
+            min: (-2000.0, -100.0, -2000.0),
+            max: (2000.0, 0.0, 2000.0),
+            kind: 0,
+        )),
+        Box((
+            min: (500.0, -100.0, -2000.0),
+            max: (600.0, 400.0, 2000.0),
+            kind: 0,
+        )),
+    ],
+    start: (
+        pos: (0, 0, -300),
+        yaw_deg: 0.0,
+        action: "Walking",
+    ),
+    // NOTE: camera yaw is 75 degrees. Stick (0,80) (forward relative to the
+    // camera) walks Mario diagonally into the wall face at x=500.
+    camera: Fixed(
+        yaw_deg: 75.0,
+    ),
+    inputs: [
+        Hold(frames: 60, stick: (0, 80), buttons: 0),
+    ],
+    compare: GroundDefault,
+)

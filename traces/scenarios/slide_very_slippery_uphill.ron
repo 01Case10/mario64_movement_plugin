@@ -1,0 +1,40 @@
+(
+    id: "slide_very_slippery_uphill",
+    tags: [
+        "ground",
+        "slide",
+        "surface",
+        "walking",
+    ],
+    geometry: [
+        Ramp((
+            origin: (0, 0, -200),
+            dir: (0, 1),
+            length: 400,
+            height: 85,
+            width: 400,
+            kind: 3,
+        )),
+        Box((
+            min: (-2000, -100, -2000),
+            max: (2000, 0, 2000),
+            kind: 0,
+        )),
+    ],
+    start: (
+        pos: (0, 0, -180),
+        yaw_deg: 0.0,
+        action: "Idle",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        Hold(
+            frames: 40,
+            stick: (0, 80),
+            buttons: 0,
+        ),
+    ],
+    compare: GroundDefault,
+)

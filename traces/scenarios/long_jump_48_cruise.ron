@@ -1,0 +1,49 @@
+(
+    id: "long_jump_48_cruise",
+    tags: [
+        "air",
+        "jump",
+    ],
+    geometry: [
+        Box((
+            min: (-4000, -100, -4000),
+            max: (4000, 0, 4000),
+            kind: 0,
+        )),
+    ],
+    start: (
+        pos: (0, 0, 0),
+        yaw_deg: 0.0,
+        action: "Idle",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        // True decomp long-jump entry: Z alone -> CROUCH_SLIDE, then A on the
+        // next frame (fwd > 10, timer < 30) -> LONG_JUMP. (A single-frame A+Z
+        // press goes JUMP -> GROUND_POUND in the decomp, so long_jump.ron's
+        // one-frame A+Z entry does not long-jump in the oracle.)
+        Hold(
+            frames: 40,
+            stick: (0, 80),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, 80),
+            buttons: 4,
+        ),
+        Press(
+            stick: (0, 80),
+            buttons: 1,
+        ),
+        // Cruise with the stick released: entry forwardVel (~47.4) sits just
+        // under the decomp's 48.0 long-jump air-drag threshold.
+        Hold(
+            frames: 80,
+            stick: (0, 0),
+            buttons: 0,
+        ),
+    ],
+    compare: AirDefault,
+)

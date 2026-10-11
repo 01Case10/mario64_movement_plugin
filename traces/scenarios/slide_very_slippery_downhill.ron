@@ -1,0 +1,39 @@
+(
+    id: "slide_very_slippery_downhill",
+    tags: [
+        "ground",
+        "slide",
+        "surface",
+    ],
+    geometry: [
+        Ramp((
+            origin: (0, 0, -200),
+            dir: (0, 1),
+            length: 400,
+            height: 85,
+            width: 400,
+            kind: 3,
+        )),
+        Box((
+            min: (-2000, -100, -2000),
+            max: (2000, 0, 2000),
+            kind: 0,
+        )),
+    ],
+    start: (
+        pos: (0, 85, 180),
+        yaw_deg: 180.0,
+        action: "Idle",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        Hold(
+            frames: 80,
+            stick: (0, 0),
+            buttons: 0,
+        ),
+    ],
+    compare: GroundDefault,
+)

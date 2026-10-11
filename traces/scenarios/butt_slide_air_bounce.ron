@@ -1,0 +1,48 @@
+(
+    id: "butt_slide_air_bounce",
+    tags: [
+        "air",
+        "slide",
+    ],
+    geometry: [
+        // NOTE: ramp listed first (decomp "surface cucking": first
+        // containing triangle in cell order wins the floor query).
+        // Steep slippery ramp: high end at z=0 (y=200), low end at z=400
+        // (y=0). Beyond z=400 a lower floor at y=-300 catches Mario; the
+        // 300-unit drop makes the ground step report LEFT_GROUND, which is
+        // what sends a butt slide into BUTT_SLIDE_AIR (a true pit with no
+        // floor would just grind Mario against the edge).
+        Ramp((
+            origin: (0, 0, 400),
+            dir: (0, -1),
+            length: 400,
+            height: 200,
+            width: 400,
+            kind: 1,
+        )),
+        Box((
+            min: (-2000, -400, 400),
+            max: (2000, -300, 2000),
+            kind: 0,
+        )),
+    ],
+    start: (
+        pos: (0, 195, 10),
+        yaw_deg: 0.0,
+        action: "Walking",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        // Hands off: the slippery slope starts a butt slide (facing
+        // downhill), Mario slides off the low edge into BUTT_SLIDE_AIR and
+        // bounces on the lower floor.
+        Hold(
+            frames: 60,
+            stick: (0, 0),
+            buttons: 0,
+        ),
+    ],
+    compare: AirDefault,
+)

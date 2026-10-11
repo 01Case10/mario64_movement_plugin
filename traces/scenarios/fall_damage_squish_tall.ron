@@ -1,0 +1,34 @@
+(
+    id: "fall_damage_squish_tall",
+    tags: [
+        "air",
+        "damage",
+        "squish",
+    ],
+    geometry: [
+        Box((
+            min: (-2000, -100, -2000),
+            max: (2000, 0, 2000),
+            kind: 0,
+        )),
+    ],
+    start: (
+        pos: (0, 2500, 0),
+        yaw_deg: 0.0,
+        action: "Freefall",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        // Taller variant of fall_damage_squish.ron (1300 -> 2500). Still under
+        // the 3000 hard-damage threshold, so this squishes (hurtCounter > 0,
+        // squish_timer = 30) instead of taking hard fall damage.
+        Hold(
+            frames: 90,
+            stick: (0, 0),
+            buttons: 0,
+        ),
+    ],
+    compare: AirDefault,
+)

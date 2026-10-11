@@ -23,7 +23,7 @@
         )),
     ],
     start: (
-        pos: (0, 31.25, 50),
+        pos: (0, 31, 50),
         yaw_deg: 0.0,
         action: "Walking",
     ),

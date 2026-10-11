@@ -14,7 +14,7 @@
             origin: (0.0, 0.0, -100.0),
             dir: (0.0, 1.0),
             length: 400.0,
-            height: -107.18,
+            height: -107.0,
             width: 400.0,
             kind: 0,
         )),

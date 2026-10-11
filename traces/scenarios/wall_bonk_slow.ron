@@ -1,0 +1,50 @@
+(
+    id: "wall_bonk_slow",
+    tags: [
+        "air",
+        "wall",
+    ],
+    geometry: [
+        Box((
+            min: (-2000, -100, -2000),
+            max: (2000, 0, 2000),
+            kind: 0,
+        )),
+        // Wall face at z=500, spanning the whole floor width.
+        Box((
+            min: (-2000, -100, 500),
+            max: (2000, 400, 600),
+            kind: 0,
+        )),
+    ],
+    start: (
+        pos: (0, 0, 250),
+        yaw_deg: 0.0,
+        action: "Idle",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        // Short run-up, then a tap jump (low arc, hits the wall well below
+        // the top so there's no ledge grab) drifting into the wall at low
+        // forward speed. Stick released after the press so air control can't
+        // push fwd past 16: the decomp's common_air_action_step takes the
+        // slow path (forwardVel zeroed, Mario stays in JUMP, no bonk action).
+        Hold(
+            frames: 12,
+            stick: (0, 80),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, 80),
+            buttons: 1,
+        ),
+        Hold(
+            frames: 40,
+            stick: (0, 0),
+            buttons: 0,
+        ),
+    ],
+    compare: AirDefault,
+)

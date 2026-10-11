@@ -1,0 +1,38 @@
+(
+    id: "pedro_spot",
+    tags: [
+        "air",
+        "ceiling",
+    ],
+    geometry: [
+        Box((
+            min: (-2000.0, -100.0, -2000.0),
+            max: (2000.0, 0.0, 2000.0),
+            kind: 0,
+        )),
+        // Full-width low ceiling: bottom face at y=150.
+        // The decomp's pedro-spot branch (perform_air_quarter_step) applies
+        // when landing with ceilHeight - floorHeight <= 160: y snaps to the
+        // floor. (A full-width ceiling avoids side-face wall-query effects;
+        // Mario starts below the ceiling so he cannot land on the box top.
+        // The plugin instead teleports to the floor from up to 78 above, so
+        // it "lands" several frames earlier.)
+        Box((
+            min: (-2000.0, 150.0, -2000.0),
+            max: (2000.0, 250.0, 2000.0),
+            kind: 0,
+        )),
+    ],
+    start: (
+        pos: (0, 140, 0),
+        yaw_deg: 0.0,
+        action: "Freefall",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        Hold(frames: 40, stick: (0, 0), buttons: 0),
+    ],
+    compare: AirDefault,
+)

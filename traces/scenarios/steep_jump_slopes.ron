@@ -1,0 +1,54 @@
+(
+    id: "steep_jump_slopes",
+    tags: [
+        "air",
+        "jump",
+        "slope",
+    ],
+    geometry: [
+        // NOTE: the ramp is listed BEFORE the floor box. The decomp's
+        // find_floor returns the FIRST containing triangle in cell order
+        // ("surface cucking"), so the box would hide the ramp otherwise.
+        // 35-degree ramp (normal.y = 0.819 <= 0.866 steep threshold for
+        // default floors; slope decel 0.98/frame < 1.1 walk accel, so Mario
+        // can stand/walk on it). Mario faces uphill and jumps.
+        Ramp((
+            origin: (0, 0, 0),
+            dir: (0, 1),
+            length: 400,
+            height: 280,
+            width: 400,
+            kind: 0,
+        )),
+        Box((
+            min: (-4000, -100, -4000),
+            max: (4000, 0, 4000),
+            kind: 0,
+        )),
+    ],
+    start: (
+        pos: (0, 210, 300),
+        yaw_deg: 0.0,
+        action: "Walking",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        Hold(
+            frames: 30,
+            stick: (0, 80),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, 80),
+            buttons: 1,
+        ),
+        Hold(
+            frames: 80,
+            stick: (0, 80),
+            buttons: 1,
+        ),
+    ],
+    compare: AirDefault,
+)

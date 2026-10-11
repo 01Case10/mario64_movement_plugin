@@ -1,0 +1,37 @@
+(
+    id: "stick_edges",
+    tags: [
+        "input",
+        "ground",
+    ],
+    geometry: [
+        Box((
+            min: (-2000.0, -100.0, -2000.0),
+            max: (2000.0, 0.0, 2000.0),
+            kind: 0,
+        )),
+    ],
+    start: (
+        pos: (0, 0, 0),
+        yaw_deg: 0.0,
+        action: "Idle",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        Hold(frames: 8, stick: (7, 0), buttons: 0),
+        Hold(frames: 8, stick: (8, 0), buttons: 0),
+        Hold(frames: 8, stick: (-8, 0), buttons: 0),
+        Hold(frames: 8, stick: (0, 7), buttons: 0),
+        Hold(frames: 8, stick: (0, 8), buttons: 0),
+        Hold(frames: 8, stick: (0, -8), buttons: 0),
+        Hold(frames: 8, stick: (64, 0), buttons: 0),
+        Hold(frames: 8, stick: (0, 64), buttons: 0),
+        Hold(frames: 8, stick: (127, 0), buttons: 0),
+        Hold(frames: 8, stick: (0, 127), buttons: 0),
+        Hold(frames: 8, stick: (-127, 0), buttons: 0),
+        Hold(frames: 8, stick: (0, -127), buttons: 0),
+    ],
+    compare: GroundDefault,
+)

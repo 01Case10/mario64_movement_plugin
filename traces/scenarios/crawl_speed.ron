@@ -1,0 +1,31 @@
+(
+    id: "crawl_speed",
+    tags: [
+        "ground",
+        "crawl",
+        "crouch",
+    ],
+    geometry: [
+        Box((
+            min: (-2000, -100, -2000),
+            max: (2000, 0, 2000),
+            kind: 0,
+        )),
+    ],
+    start: (
+        pos: (0, 0, 0),
+        yaw_deg: 0.0,
+        action: "Idle",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        Hold(
+            frames: 60,
+            stick: (0, 80),
+            buttons: 4,
+        ),
+    ],
+    compare: GroundDefault,
+)

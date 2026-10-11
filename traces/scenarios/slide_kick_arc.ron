@@ -1,0 +1,52 @@
+(
+    id: "slide_kick_arc",
+    tags: [
+        "ground",
+        "slide",
+        "air",
+    ],
+    geometry: [
+        Box((
+            min: (-2000, -100, -2000),
+            max: (2000, 0, 4000),
+            kind: 0,
+        )),
+    ],
+    start: (
+        pos: (0, 0, 0),
+        yaw_deg: 0.0,
+        action: "Idle",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        // Same slide-kick entry as slide_kick.ron (run, Z to crouch-slide,
+        // A to kick).
+        Hold(
+            frames: 40,
+            stick: (0, 80),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, 80),
+            buttons: 4,
+        ),
+        Hold(
+            frames: 5,
+            stick: (0, 80),
+            buttons: 4,
+        ),
+        Press(
+            stick: (0, 80),
+            buttons: 6,
+        ),
+        // Full slide-kick arc (vy 12, gravity 2) plus the landing slide.
+        Hold(
+            frames: 60,
+            stick: (0, 0),
+            buttons: 0,
+        ),
+    ],
+    compare: GroundDefault,
+)

@@ -1,0 +1,53 @@
+(
+    id: "wall_bonk_fast",
+    tags: [
+        "air",
+        "wall",
+    ],
+    geometry: [
+        Box((
+            min: (-2000, -100, -2000),
+            max: (2000, 0, 2000),
+            kind: 0,
+        )),
+        // Wall face at z=1000, far enough out that Mario reaches ~31 speed
+        // before the long jump (entry fwd ~46 >= 38).
+        Box((
+            min: (-2000, -100, 1000),
+            max: (2000, 400, 1100),
+            kind: 0,
+        )),
+    ],
+    start: (
+        pos: (0, 0, 0),
+        yaw_deg: 0.0,
+        action: "Idle",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        // Run up to speed, then true decomp long-jump entry (Z -> crouch
+        // slide, A next frame -> LONG_JUMP, fwd x1.5 ~= 45 >= 38) into the
+        // wall: decomp goes AIR_HIT_WALL -> BACKWARD_AIR_KB in the hit frame.
+        Hold(
+            frames: 40,
+            stick: (0, 80),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, 80),
+            buttons: 4,
+        ),
+        Press(
+            stick: (0, 80),
+            buttons: 1,
+        ),
+        Hold(
+            frames: 50,
+            stick: (0, 0),
+            buttons: 0,
+        ),
+    ],
+    compare: AirDefault,
+)

@@ -1,0 +1,44 @@
+(
+    id: "double_jump_window_9f",
+    tags: [
+        "ground",
+        "jump",
+        "double-jump",
+    ],
+    geometry: [
+        Box((
+            min: (-2000, -100, -2000),
+            max: (2000, 0, 2000),
+            kind: 0,
+        )),
+    ],
+    start: (
+        pos: (0, 0, 0),
+        yaw_deg: 0.0,
+        action: "Idle",
+    ),
+    camera: Fixed(
+        yaw_deg: 0.0,
+    ),
+    inputs: [
+        Press(
+            stick: (0, 0),
+            buttons: 1,
+        ),
+        Hold(
+            frames: 19,
+            stick: (0, 0),
+            buttons: 0,
+        ),
+        Press(
+            stick: (0, 0),
+            buttons: 1,
+        ),
+        Hold(
+            frames: 40,
+            stick: (0, 0),
+            buttons: 0,
+        ),
+    ],
+    compare: GroundDefault,
+)
