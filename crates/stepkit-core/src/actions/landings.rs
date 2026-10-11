@@ -385,9 +385,6 @@ impl ActionHandler for JumpLand {
         "JumpLand"
     }
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
-        if let Some(r) = moving_prelude(cx) {
-            return r;
-        }
         if let Some(r) =
             common_landing_cancels(cx, prev_buttons, &S_JUMP_LAND_ACTION, set_jumping_action)
         {
@@ -405,9 +402,6 @@ impl ActionHandler for FreefallLand {
         "FreefallLand"
     }
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
-        if let Some(r) = moving_prelude(cx) {
-            return r;
-        }
         if let Some(r) =
             common_landing_cancels(cx, prev_buttons, &S_FREEFALL_LAND_ACTION, set_jumping_action)
         {
@@ -425,9 +419,6 @@ impl ActionHandler for SideFlipLand {
         "SideFlipLand"
     }
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
-        if let Some(r) = moving_prelude(cx) {
-            return r;
-        }
         if let Some(r) =
             common_landing_cancels(cx, prev_buttons, &S_SIDE_FLIP_LAND_ACTION, set_jumping_action)
         {
@@ -450,9 +441,6 @@ impl ActionHandler for LongJumpLand {
         "LongJumpLand"
     }
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
-        if let Some(r) = moving_prelude(cx) {
-            return r;
-        }
         // decomp: if (!(m->input & INPUT_Z_DOWN)) m->input &= ~INPUT_A_PRESSED.
         if cx.state.input & input_flags::Z_DOWN == 0 {
             cx.state.input &= !input_flags::A_PRESSED;
@@ -487,9 +475,6 @@ impl ActionHandler for DoubleJumpLand {
         "DoubleJumpLand"
     }
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
-        if let Some(r) = moving_prelude(cx) {
-            return r;
-        }
         if let Some(r) = common_landing_cancels(
             cx,
             prev_buttons,
@@ -510,9 +495,6 @@ impl ActionHandler for TripleJumpLand {
         "TripleJumpLand"
     }
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
-        if let Some(r) = moving_prelude(cx) {
-            return r;
-        }
         // decomp: m->input &= ~INPUT_A_PRESSED (unconditional).
         cx.state.input &= !input_flags::A_PRESSED;
         if let Some(r) =
@@ -539,9 +521,6 @@ impl ActionHandler for BackflipLand {
         "BackflipLand"
     }
     fn tick(&self, cx: &mut ActionCx, prev_buttons: u16) -> ActionResult {
-        if let Some(r) = moving_prelude(cx) {
-            return r;
-        }
         // decomp: if (!(m->input & INPUT_Z_DOWN)) m->input &= ~INPUT_A_PRESSED.
         if cx.state.input & input_flags::Z_DOWN == 0 {
             cx.state.input &= !input_flags::A_PRESSED;
