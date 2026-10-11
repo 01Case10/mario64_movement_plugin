@@ -55,6 +55,10 @@ pub mod mario_flags {
     pub const WING_CAP: u32 = 0x00000008;
     pub const CAP_ON_HEAD: u32 = 0x00000010;
     pub const UNKNOWN_08: u32 = 0x00000100;
+    /// decomp: `MARIO_UNKNOWN_18` (sm64.h:127); set by `play_far_fall_sound`
+    /// when fall height > 1150; cleared by `set_mario_action` when new
+    /// action is not AIR.
+    pub const UNKNOWN_18: u32 = 0x00040000;
     /// decomp: `MARIO_UNKNOWN_25` (sm64.h:131); set by
     /// `update_ledge_climb_camera`.
     pub const UNKNOWN_25: u32 = 0x02000000;
