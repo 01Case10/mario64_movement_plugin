@@ -58,10 +58,12 @@ impl ActionHandler for Twirling {
         match perform_air_step(&mut cx.state, cx.world, 0) {
             AirStep::Landed => {
                 cx.state.land_from = cx.state.action;
-                let id = super::entry::set_mario_action_airborne(cx, ActionId::TWIRL_LAND, 0);
                 // decomp: `set_mario_action(m, ACT_TWIRL_LAND, 0); break;` — falls
                 // through to the gfx angle update, returns FALSE → next-tick.
-                cx.state.action = id;
+                // NOTE: plain set_mario_action, NOT set_mario_action_airborne:
+                // the airborne entry would wrongly reset peakHeight to pos.y
+                // and set UNKNOWN_08.
+                cx.state.action = ActionId::TWIRL_LAND;
                 cx.state.action_arg = 0;
             }
             AirStep::HitWall => {

@@ -229,12 +229,16 @@ pub fn common_air_action_step(
             cx.set_mario_animation(crate::anim_table::MARIO_ANIM_IDLE_ON_LEDGE);
             // decomp: drop_and_set_mario_action(ACT_LEDGE_GRAB, 0).
             // (object drop skipped.)
-            let id = super::entry::set_mario_action_airborne(cx, ActionId::LEDGE_GRAB, 0);
-            Some(cx.goto_next(id, 0))
+            // NOTE: plain set_mario_action — NOT set_mario_action_airborne.
+            // The airborne entry would wrongly set peakHeight = pos.y (pos
+            // was already teleported to the ledge top by perform_air_step)
+            // and set UNKNOWN_08. The decomp's set_mario_action does neither.
+            Some(cx.goto_next(ActionId::LEDGE_GRAB, 0))
         }
         AirStep::GrabbedCeiling => {
-            let id = super::entry::set_mario_action_airborne(cx, ActionId::START_HANGING, 0);
-            Some(cx.goto_next(id, 0))
+            // decomp: set_mario_action(ACT_START_HANGING) — plain, not the
+            // airborne variant (same peakHeight/UNKNOWN_08 reasoning as above).
+            Some(cx.goto_next(ActionId::START_HANGING, 0))
         }
         AirStep::HitLavaWall => {
             // decomp: lava_boost_on_wall — out of scope (no lava surfaces

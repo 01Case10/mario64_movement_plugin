@@ -238,7 +238,13 @@ pub fn common_slide_action(
         GroundStep::LeftGround => {
             // decomp: `set_mario_action(m, airAction, 0)`, return value
             // discarded -> next-tick semantics.
-            let _ = cx.goto_next(air_action, 0);
+            // NOTE: the decomp's set_mario_action (mario.c:979) routes
+            // ACT_GROUP_AIRBORNE through set_mario_action_airborne, which
+            // sets peakHeight = pos.y and UNKNOWN_08. The plugin's
+            // transition() only dispatches GROUP_MOVING, so the airborne
+            // entry must be invoked explicitly here.
+            let id = super::entry::set_mario_action_airborne(cx, air_action, 0);
+            let _ = cx.goto_next(id, 0);
             // decomp: SOUND_MARIO_HOOHOO when |forwardVel| > 50 skipped.
             ActionResult::Stay
         }
